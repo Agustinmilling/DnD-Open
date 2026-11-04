@@ -1,0 +1,21 @@
+// Las 18 habilidades de 5ª edición (SRD 5.1)
+module.exports = {
+  acrobatics: { name: 'Acrobacias', ability: 'dex', desc: 'Mantener el equilibrio en situaciones difíciles, hacer piruetas, volteretas y saltos acrobáticos.' },
+  animal: { name: 'Trato con animales', ability: 'wis', desc: 'Calmar a un animal doméstico, evitar que una montura se asuste o intuir las intenciones de un animal.' },
+  arcana: { name: 'Arcanos', ability: 'int', desc: 'Recordar saberes sobre conjuros, objetos mágicos, símbolos arcanos, tradiciones mágicas y planos de existencia.' },
+  athletics: { name: 'Atletismo', ability: 'str', desc: 'Trepar, saltar, nadar y otras proezas físicas que dependen de la fuerza bruta.' },
+  deception: { name: 'Engaño', ability: 'cha', desc: 'Ocultar la verdad de forma convincente, ya sea con palabras o con actos.' },
+  history: { name: 'Historia', ability: 'int', desc: 'Recordar saberes sobre sucesos históricos, personajes legendarios, reinos antiguos y civilizaciones perdidas.' },
+  insight: { name: 'Perspicacia', ability: 'wis', desc: 'Determinar las verdaderas intenciones de una criatura, detectar mentiras o predecir su siguiente movimiento.' },
+  intimidation: { name: 'Intimidación', ability: 'cha', desc: 'Influir en otros mediante amenazas, actos hostiles o violencia física.' },
+  investigation: { name: 'Investigación', ability: 'int', desc: 'Buscar pistas y hacer deducciones a partir de ellas: encontrar un objeto oculto, descubrir el punto débil de una estructura.' },
+  medicine: { name: 'Medicina', ability: 'wis', desc: 'Estabilizar a un compañero moribundo o diagnosticar una enfermedad.' },
+  nature: { name: 'Naturaleza', ability: 'int', desc: 'Recordar saberes sobre el terreno, plantas, animales, el clima y los ciclos naturales.' },
+  perception: { name: 'Percepción', ability: 'wis', desc: 'Ver, oír o detectar de cualquier otro modo la presencia de algo. Mide la atención al entorno.' },
+  performance: { name: 'Interpretación', ability: 'cha', desc: 'Deleitar a un público con música, danza, actuación, narración u otro tipo de entretenimiento.' },
+  persuasion: { name: 'Persuasión', ability: 'cha', desc: 'Influir en alguien o en un grupo con tacto, buenos modales o buena fe.' },
+  religion: { name: 'Religión', ability: 'int', desc: 'Recordar saberes sobre deidades, ritos, oraciones, jerarquías religiosas, símbolos sagrados y cultos.' },
+  sleight: { name: 'Juego de manos', ability: 'dex', desc: 'Actos de prestidigitación o engaño manual, como plantar algo en otra persona u ocultar un objeto.' },
+  stealth: { name: 'Sigilo', ability: 'dex', desc: 'Ocultarse de los enemigos, pasar desapercibido o moverse sin hacer ruido.' },
+  survival: { name: 'Supervivencia', ability: 'wis', desc: 'Seguir rastros, cazar, guiar al grupo por terreno salvaje, predecir el clima y evitar peligros naturales.' },
+};

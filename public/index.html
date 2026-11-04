@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mesa de Dados</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">🎲 Mesa de Dados</a>
+    <div id="roomInfo" class="room-info hidden">
+      Sala <b id="roomCode"></b>
+      <button id="copyLink" class="btn small ghost" title="Copiar enlace de invitación">Copiar invitación</button>
+    </div>
+    <nav><a href="/glosario" target="_blank" class="btn small ghost">📖 Glosario</a></nav>
+  </header>
+
+  <!-- Pantalla de inicio -->
+  <main id="home" class="screen">
+    <section class="home-card">
+      <h1>Mesa de Dados</h1>
+      <p class="lead">Juega una aventura de rol con las reglas de 5ª edición junto a tus amigos, desde el navegador. Personajes listos para jugar, dados, chat, combate por turnos y subida de nivel.</p>
+      <label>Tu nombre<input id="nameInput" maxlength="24" placeholder="p. ej. Agustín" autocomplete="nickname"></label>
+      <div class="row">
+        <button id="createBtn" class="btn primary">Crear sala nueva</button>
+      </div>
+      <div class="divider"><span>o únete a una sala</span></div>
+      <div class="row">
+        <input id="codeInput" maxlength="5" placeholder="CÓDIGO" class="code-input">
+        <button id="joinBtn" class="btn">Unirse</button>
+      </div>
+      <p id="homeError" class="error"></p>
+    </section>
+  </main>
+
+  <!-- Lobby -->
+  <main id="lobby" class="screen hidden">
+    <section class="lobby-main">
+      <h2 id="advTitle"></h2>
+      <p id="advSummary" class="muted"></p>
+      <h3>Elige tu personaje</h3>
+      <div id="catalog" class="catalog"></div>
+      <div class="lobby-actions">
+        <div id="playersList" class="players"></div>
+        <button id="startBtn" class="btn primary big">Comenzar aventura</button>
+        <p id="startHint" class="muted small"></p>
+      </div>
+    </section>
+    <aside class="side" id="lobbyChatSlot"></aside>
+  </main>
+
+  <!-- Partida -->
+  <main id="game" class="screen hidden">
+    <nav class="mobile-tabs">
+      <button data-tab="party">Grupo</button>
+      <button data-tab="story" class="active">Historia</button>
+      <button data-tab="chat">Chat y dados</button>
+    </nav>
+    <aside class="col party" data-col="party">
+      <h3>Grupo</h3>
+      <div id="partyList"></div>
+      <div id="lootBox" class="loot"></div>
+    </aside>
+    <section class="col story active" data-col="story">
+      <div id="sceneHeader" class="scene-header"></div>
+      <div id="log" class="log"></div>
+      <div id="actionPanel" class="action-panel"></div>
+    </section>
+    <aside class="col side" data-col="chat" id="gameChatSlot"></aside>
+  </main>
+
+  <!-- Chat + dados (se mueve entre lobby y partida) -->
+  <div id="chatHolder" class="hidden"><div id="chatBox" class="chatbox">
+    <h3>Chat de la mesa</h3>
+    <div id="chat" class="chat"></div>
+    <form id="chatForm" class="chat-form">
+      <input id="chatInput" maxlength="500" placeholder="Escribe… o /r 1d20+5" autocomplete="off">
+      <button class="btn small">Enviar</button>
+    </form>
+    <div class="dice-tray">
+      <div class="dice-buttons">
+        <button data-die="4">d4</button><button data-die="6">d6</button><button data-die="8">d8</button>
+        <button data-die="10">d10</button><button data-die="12">d12</button><button data-die="20" class="d20">d20</button><button data-die="100">d100</button>
+      </div>
+      <div class="dice-options">
+        <label>Cant. <input id="diceCount" type="number" min="1" max="20" value="1"></label>
+        <label>Mod. <input id="diceMod" type="number" min="-20" max="20" value="0"></label>
+        <select id="diceMode"><option value="normal">Normal</option><option value="adv">Ventaja</option><option value="dis">Desventaja</option></select>
+      </div>
+    </div>
+  </div></div>
+
+  <!-- Ficha de personaje -->
+  <dialog id="sheetDialog" class="sheet-dialog">
+    <form method="dialog" class="close-form"><button class="btn close-x" aria-label="Cerrar">✕</button></form>
+    <div id="sheetBody"></div>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+  <footer class="attribution">
+    Contiene material del <i>System Reference Document 5.1</i> de Wizards of the Coast LLC, disponible en
+    <a href="https://dnd.wizards.com/resources/systems-reference-document" target="_blank" rel="noopener">dnd.wizards.com</a>,
+    bajo licencia <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noopener">CC BY 4.0</a> (traducido y adaptado).
+    Proyecto no oficial, sin relación con Wizards of the Coast.
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
