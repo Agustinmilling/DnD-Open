@@ -9,23 +9,11 @@
   <link rel="stylesheet" href="/style.css">
   <style>
     .gwrap { width: min(1000px, 100%); margin: 0 auto; padding: 20px 16px; flex: 1; }
-    .gtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-    .gtabs button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 6px 14px; cursor: pointer; font: inherit; }
-    .gtabs button.active { border-color: var(--gold); color: var(--gold); background: #3a2e14; }
-    .gtabs button small { color: var(--muted); }
     #q { width: 100%; font-size: 16px; padding: 12px 14px; }
-    .glist { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-    .gitem { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
-    .gitem h4 { margin: 0 0 2px; font-family: var(--display); font-size: 18px; color: var(--gold); font-weight: normal; }
-    .gitem .gtag { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .gitem .gmeta { font-size: 12px; color: #cdb98f; margin-bottom: 6px; }
-    .gitem p { margin: 0; font-size: 14px; line-height: 1.5; color: #e2d7c5; }
-    .gitem.magic h4::before { content: '✨ '; }
-    mark { background: #e0b35455; color: inherit; border-radius: 2px; }
   </style>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="/"><span class="brand-die">⬢</span> Mesa de Dados</a><nav><a class="btn small ghost" href="/">Volver a la mesa</a></nav></header>
+  <header class="topbar"><a class="brand" href="/"><span class="brand-die">⬢</span> Mesa de Dados</a><nav><a class="btn small ghost" id="back" href="/">Volver a la mesa</a></nav></header>
   <main class="gwrap">
     <h1>📖 Glosario</h1>
     <p class="muted">Reglas básicas, habilidades, rasgos y pasivas, objetos, conjuros, condiciones y criaturas de la 5ª edición usados en la plataforma.</p>
@@ -69,6 +57,7 @@
       }
       document.getElementById('list').innerHTML = items.map((e) => `<article class="gitem ${e.magic ? 'magic' : ''}"><h4>${hl(e.name, q)}</h4><div class="gtag">${tab === 'all' ? esc(e.sec) + (e.tag ? ' · ' : '') : ''}${esc(e.tag || '')}</div>${e.meta ? `<div class="gmeta">${esc(e.meta)}</div>` : ''}<p>${hl(e.desc, q)}</p></article>`).join('') || '<p class="muted">Nada coincide con la búsqueda.</p>';
     }
+    try { const r = document.referrer && new URL(document.referrer); if (r && r.origin === location.origin && r.searchParams.get('sala')) document.getElementById('back').href = r.pathname + r.search; } catch {}
     fetch('/api/glossary').then((r) => r.json()).then((d) => { data = d; render(); });
     document.getElementById('q').addEventListener('input', render);
   </script>

@@ -19,7 +19,7 @@
     </div>
     <nav>
       <button id="motionToggle" class="btn small ghost" title="Activar o desactivar animaciones">✨ Animaciones</button>
-      <a href="/glosario" target="_blank" class="btn small ghost">📖 Glosario</a>
+      <button id="glossaryBtn" class="btn small ghost" aria-expanded="false" aria-controls="glossaryWin">📖 Glosario</button>
     </nav>
   </header>
 
@@ -120,6 +120,21 @@
     <form method="dialog" class="close-form"><button class="btn close-x" aria-label="Cerrar">✕</button></form>
     <div id="sheetBody"></div>
   </dialog>
+
+  <!-- Glosario flotante (no bloquea la partida) -->
+  <section id="glossaryWin" class="gwin hidden" role="dialog" aria-label="Glosario">
+    <header class="gwin-head" id="glossaryHead">
+      <b>📖 Glosario</b>
+      <span class="muted small gwin-hint">Arrástrala para moverla</span>
+      <a href="/glosario" target="_blank" rel="noopener" class="btn small ghost" title="Abrir en una pestaña aparte">↗</a>
+      <button id="glossaryClose" class="btn small ghost" aria-label="Cerrar glosario">✕</button>
+    </header>
+    <div class="gwin-body">
+      <input id="gq" placeholder="Buscar: «ventaja», «Bendición», «paralizado»…" aria-label="Buscar en el glosario" autocomplete="off">
+      <div class="gtabs" id="gtabs"></div>
+      <div class="glist" id="glist"><p class="muted">Cargando…</p></div>
+    </div>
+  </section>
 
   <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
   <div id="toast" class="toast hidden" role="status"></div>

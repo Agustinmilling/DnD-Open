@@ -662,6 +662,73 @@
     } else $$('[data-roll]', body).forEach((el) => (el.style.cursor = 'default'));
   }
 
+  // ------------------------------------------------------------------ glosario flotante
+  const G_SECTIONS = [
+    ['rules', 'Reglas básicas'], ['skills', 'Habilidades'], ['features', 'Rasgos y pasivas'], ['items', 'Objetos'],
+    ['spells', 'Conjuros'], ['conditions', 'Condiciones'], ['monsters', 'Criaturas'],
+  ];
+  const gnorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const G = { tab: 'all', data: null };
+  function ghl(text, q) {
+    if (!q) return esc(text);
+    const i = gnorm(text).indexOf(q);
+    if (i < 0) return esc(text);
+    return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+  }
+  function renderGlossary() {
+    const data = G.data;
+    if (!data) return;
+    const q = gnorm($('#gq').value.trim());
+    const match = (e) => !q || gnorm(`${e.name} ${e.tag || ''} ${e.desc} ${e.meta || ''}`).includes(q);
+    $('#gtabs').innerHTML = [['all', 'Todo']].concat(G_SECTIONS).map(([k, n]) => {
+      const count = k === 'all' ? G_SECTIONS.reduce((a, [s]) => a + data[s].filter(match).length, 0) : data[k].filter(match).length;
+      return `<button data-k="${k}" class="${G.tab === k ? 'active' : ''}">${n} <small>${count}</small></button>`;
+    }).join('');
+    $$('#gtabs button').forEach((b) => (b.onclick = () => { G.tab = b.dataset.k; renderGlossary(); $('.gwin-body').scrollTop = 0; }));
+    const secs = G.tab === 'all' ? G_SECTIONS.map(([k]) => k) : [G.tab];
+    let items = [];
+    for (const s of secs) {
+      let list = data[s].filter(match);
+      if (s === 'spells') list = list.slice().sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+      else if (s !== 'rules') list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
+      items = items.concat(list.map((e) => ({ ...e, sec: G_SECTIONS.find(([k]) => k === s)[1] })));
+    }
+    $('#glist').innerHTML = items.map((e) => `<article class="gitem ${e.magic ? 'magic' : ''}"><h4>${ghl(e.name, q)}</h4><div class="gtag">${G.tab === 'all' ? esc(e.sec) + (e.tag ? ' · ' : '') : ''}${esc(e.tag || '')}</div>${e.meta ? `<div class="gmeta">${esc(e.meta)}</div>` : ''}<p>${ghl(e.desc, q)}</p></article>`).join('') || '<p class="muted">Nada coincide con la búsqueda.</p>';
+  }
+  function toggleGlossary(open) {
+    const win = $('#glossaryWin');
+    open = open ?? win.classList.contains('hidden');
+    win.classList.toggle('hidden', !open);
+    $('#glossaryBtn').setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    if (!G.data) glossary().then((d) => { G.data = d; renderGlossary(); }).catch(() => { $('#glist').innerHTML = '<p class="error">No se pudo cargar el glosario.</p>'; });
+    if (matchMedia('(min-width: 901px)').matches) $('#gq').focus();
+  }
+  $('#glossaryBtn').onclick = () => toggleGlossary();
+  $('#glossaryClose').onclick = () => toggleGlossary(false);
+  $('#gq').addEventListener('input', renderGlossary);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#glossaryWin').classList.contains('hidden') && !$('#sheetDialog').open) toggleGlossary(false); });
+  // arrastrar la ventana por su cabecera (solo escritorio)
+  (() => {
+    const win = $('#glossaryWin'), head = $('#glossaryHead');
+    let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button, a') || !matchMedia('(min-width: 901px)').matches) return;
+      const r = win.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const x = Math.max(0, Math.min(innerWidth - win.offsetWidth, e.clientX - drag.dx));
+      const y = Math.max(48, Math.min(innerHeight - 40, e.clientY - drag.dy));
+      Object.assign(win.style, { left: `${x}px`, top: `${y}px`, right: 'auto' });
+    });
+    const stop = () => { drag = null; };
+    head.addEventListener('pointerup', stop);
+    head.addEventListener('pointercancel', stop);
+  })();
+
   // ------------------------------------------------------------------ pestañas móviles
   $$('.mobile-tabs button').forEach((b) => (b.onclick = () => {
     $$('.mobile-tabs button').forEach((x) => x.classList.toggle('active', x === b));
