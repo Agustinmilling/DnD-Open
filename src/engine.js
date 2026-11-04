@@ -44,8 +44,14 @@ class Room {
   }
   destroy() { for (const t of this.timers) clearTimeout(t); this.timers.clear(); }
   addLog(kind, text, extra = {}) {
-    this.log.push({ id: ++logSeq, t: Date.now(), kind, text, ...extra });
+    const { fx, ...rest } = extra;
+    this.log.push({ id: ++logSeq, t: Date.now(), kind, text, ...rest, fx: fx ? [fx] : [] });
     if (this.log.length > 400) this.log.splice(0, this.log.length - 400);
+  }
+  /** Añade un efecto visual a la última entrada del registro (daño, curación…) */
+  fxPush(f) {
+    const last = this.log[this.log.length - 1];
+    if (last) last.fx.push(f);
   }
   addChat(entry) {
     this.chat.push({ id: ++logSeq, t: Date.now(), ...entry });
@@ -104,6 +110,7 @@ class Room {
       case 'rest': return this.doShortRest(player);
       case 'explore': return this.doExploreAction(player, pc, msg);
       case 'take': return this.takeLoot(player, pc, msg.item);
+      case 'buy': return this.doBuy(player, pc, msg.item);
       case 'act': return this.doCombatAction(player, pc, msg);
       case 'restart': return this.restartAdventure(player);
       default: throw new Error('Acción desconocida');
@@ -188,6 +195,7 @@ class Room {
     if (!this.partyPCs().length) throw new Error('Elegid al menos un personaje');
     this.phase = 'adventure';
     this.addLog('narration', `— ${ADVENTURE.title} —`, { title: true });
+    if (ADVENTURE.startGold) { this.party.gold = ADVENTURE.startGold * this.partyPCs().length; this.addLog('loot', `💰 El grupo empieza con ${this.party.gold} po.`); }
     this.enterScene(ADVENTURE.start);
   }
 
@@ -211,21 +219,54 @@ class Room {
   // ---------------------------------------------------------------- escenas
   sceneDef() { return ADVENTURE.scenes[this.sceneId]; }
 
+  /** Textos de escena: string o { if: (flags) => bool, text } */
+  sceneTexts(list) {
+    return (list || []).filter((p) => typeof p === 'string' || (p.if ? p.if(this.flags) : true)).map((p) => (typeof p === 'string' ? p : p.text));
+  }
+
   enterScene(id) {
     const def = ADVENTURE.scenes[id];
     this.sceneId = id;
-    this.scene = { checks: {}, votes: {}, restUsed: false, combatDone: false, checkpoint: clone({ pcs: this.pcs, party: this.party, flags: this.flags }) };
-    this.addLog('scene', def.title, { title: true });
-    for (const p of def.text) this.addLog('narration', p);
+    this.scene = { checks: {}, votes: {}, restUsed: false, combatDone: false, encounterStarted: false, checkpoint: clone({ pcs: this.pcs, party: this.party, flags: this.flags }) };
+    this.addLog('scene', def.title, { title: true, fx: { kind: 'scene', id, title: def.title } });
+    for (const p of this.sceneTexts(def.text)) this.addLog('narration', p);
     if (def.trap && !this.flags[def.trap.unless]) this.runTrap(def.trap);
-    if (def.combat) this.startCombat(def.combat);
     if (def.reward) {
-      if (def.reward.gold) { this.party.gold += def.reward.gold * this.partyPCs().length; this.addLog('loot', `Recompensa: ${def.reward.gold * this.partyPCs().length} po para el grupo.`); }
+      if (def.reward.gold) { const g = def.reward.gold * this.partyPCs().length; this.party.gold += g; this.addLog('loot', `Recompensa: ${g} po para el grupo.`, { fx: { kind: 'gold', amount: g } }); }
+      if (def.reward.xp) { this.addLog('xp', `✨ +${def.reward.xp} PX para cada personaje.`); for (const p of this.activePCs()) this.giveXp(p, def.reward.xp); }
+    }
+    if (def.combat) {
+      const auto = def.combat.auto ? def.combat.auto(this.flags) : true;
+      if (auto) this.startCombat(def.combat);
+      else this.addLog('system', 'Podéis intentar resolverlo de otra forma… o atacar.');
     }
     if (def.end) {
       this.phase = 'ended';
       this.addLog('system', '🏆 Aventura completada. El anfitrión puede empezar una nueva partida.');
     }
+  }
+
+  /** ¿Hay un encuentro pendiente en esta escena? */
+  encounterPending() {
+    const def = this.sceneDef();
+    return !!(def && def.combat && !this.scene.combatDone);
+  }
+
+  /** Resolver el encuentro sin combate (negociación, intimidación, pago…) */
+  resolvePeacefully() {
+    const def = this.sceneDef();
+    if (!def.combat || this.scene.combatDone) return;
+    this.scene.combatDone = true;
+    const p = def.combat.peaceful || {};
+    if (p.text) this.addLog('narration', p.text);
+    const ms = (def.combat.victory && def.combat.victory.milestoneXp) || 0;
+    const xp = ms + (p.xp || 0);
+    if (xp) {
+      this.addLog('xp', `✨ Encuentro superado sin combate: ${xp} PX para cada personaje.`);
+      for (const pc of this.activePCs()) this.giveXp(pc, xp);
+    }
+    if (p.gold) { const g = p.gold * this.partyPCs().length; this.party.gold += g; this.addLog('loot', `+${g} po para el grupo.`, { fx: { kind: 'gold', amount: g } }); }
+    if (p.items) this.addLoot(p.items);
   }
 
   runTrap(trap) {
@@ -234,28 +275,43 @@ class Room {
     for (const pc of this.activePCs()) {
       const s = this.pcSave(pc, trap.save, trap.dc);
       const amount = s.success ? Math.floor(dmg.total / 2) : dmg.total;
-      this.addLog('roll', `${pc.name}: salvación de ${ABILITIES[trap.save].name} ${s.text} → ${s.success ? 'éxito' : 'fallo'}, ${amount} de daño ${trap.type}.`, { success: s.success });
+      this.addLog('roll', `${pc.name}: salvación de ${ABILITIES[trap.save].name} ${s.text} → ${s.success ? 'éxito' : 'fallo'}, ${amount} de daño ${trap.type}.`, { success: s.success, fx: { kind: 'd20', who: pc.id, nat: s.nat, total: s.total, success: s.success } });
       this.damagePC(pc, amount, { type: trap.type });
     }
   }
 
   checkVisible(c) {
+    if (this.scene.restarting) return false;
     if (c.requires && !c.requires.some((f) => this.flags[f])) return false;
     if (c.hideIf && c.hideIf.some((f) => this.flags[f])) return false;
+    // las opciones previas al combate desaparecen cuando el encuentro se resuelve
+    if (c.preCombat && (!this.encounterPending() || this.combat)) return false;
+    // el resto de opciones de una escena con encuentro pendiente esperan a que se resuelva
+    if (!c.preCombat && this.encounterPending()) return false;
     return true;
+  }
+
+  exitVisible(ex) {
+    if (this.scene.restarting) return false;
+    if (ex.hideIf && ex.hideIf.some((f) => this.flags[f])) return false;
+    if (ex.showIf && !ex.showIf.some((f) => this.flags[f])) return false;
+    if (ex.fight) return this.encounterPending() && !this.combat;
+    return !this.encounterPending();
   }
 
   doCheck(player, pc, checkId) {
     if (this.phase !== 'adventure') throw new Error('No hay aventura en curso');
     if (this.combat) throw new Error('Estáis en combate');
-    if (!pc || pc.dead) throw new Error('Necesitas un personaje vivo');
+    if (!pc || pc.dead || pc.hp <= 0) throw new Error('Necesitas un personaje consciente');
     const def = this.sceneDef();
     const c = (def.checks || []).find((x) => x.id === checkId);
     if (!c || !this.checkVisible(c)) throw new Error('Esa opción no está disponible');
-    if (def.combat && !this.scene.combatDone) throw new Error('Primero hay que superar el combate');
     const st = this.scene.checks[c.id] || (this.scene.checks[c.id] = { done: false, attempts: [] });
     if (st.done) throw new Error('Esa prueba ya se ha resuelto');
     if (c.mode !== 'group' && st.attempts.includes(pc.id)) throw new Error('Tu personaje ya lo ha intentado');
+    const n = this.partyPCs().length;
+    if (c.cost && this.party.gold < c.cost * n) throw new Error(`No tenéis suficiente oro (hacen falta ${c.cost * n} po)`);
+    if (c.needsItem && !pc.inventory[c.needsItem]) throw new Error(`Tu personaje necesita: ${ITEMS[c.needsItem].name}`);
 
     let success;
     let failedPCs = [];
@@ -263,7 +319,7 @@ class Room {
       success = true;
       this.addLog('action', `${pc.name}: ${c.label}`);
     } else if (c.mode === 'group') {
-      const pcs = this.activePCs();
+      const pcs = this.activePCs().filter((p) => p.hp > 0);
       let ok = 0;
       const parts = [];
       for (const p of pcs) {
@@ -272,26 +328,38 @@ class Room {
         parts.push(`${p.name} ${r.text}${r.success ? ' ✔' : ' ✘'}`);
       }
       success = ok >= Math.ceil(pcs.length / 2);
-      this.addLog('roll', `Prueba de grupo — ${c.label}: ${parts.join(' · ')} → ${success ? 'ÉXITO' : 'FALLO'} (${ok}/${pcs.length})`, { success });
+      this.addLog('roll', `Prueba de grupo — ${c.label}: ${parts.join(' · ')} → ${success ? 'ÉXITO' : 'FALLO'} (${ok}/${pcs.length})`, { success, fx: { kind: 'group', success, ok, total: pcs.length } });
     } else {
       const r = this.pcCheck(pc, c);
       success = r.success;
       if (!success) failedPCs = [pc];
-      this.addLog('roll', `${pc.name} — ${c.label}: ${r.text} → ${success ? 'ÉXITO' : 'FALLO'}`, { success });
+      this.addLog('roll', `${pc.name} — ${c.label}: ${r.text} → ${success ? 'ÉXITO' : 'FALLO'}`, { success, fx: { kind: 'd20', who: pc.id, nat: r.nat, total: r.total, success } });
     }
+    if (c.cost) { this.party.gold -= c.cost * n; this.addLog('loot', `−${c.cost * n} po del grupo.`, { fx: { kind: 'gold', amount: -c.cost * n } }); }
+    if (c.needsItem) { pc.inventory[c.needsItem] -= 1; if (!pc.inventory[c.needsItem]) delete pc.inventory[c.needsItem]; }
     st.attempts.push(pc.id);
     const out = success ? c.success : c.fail;
     if (success || !c.retry) st.done = true;
     if (c.retry && !success && this.activePCs().every((p) => st.attempts.includes(p.id))) st.done = true;
     st.result = success ? 'success' : 'fail';
     if (!out) return;
-    this.addLog('narration', out.text);
+    if (out.text) this.addLog('narration', out.text);
     for (const f of out.flags || []) this.flags[f] = true;
-    if (out.gold) { const g = out.gold * this.partyPCs().length; this.party.gold += g; this.addLog('loot', `+${g} po para el grupo.`); }
+    if (out.gold) { const g = out.gold * n; this.party.gold += g; this.addLog('loot', `+${g} po para el grupo.`, { fx: { kind: 'gold', amount: g } }); }
     if (out.items) this.addLoot(out.items);
     if (out.xp) {
       const who = c.mode === 'group' ? this.activePCs() : [pc];
       for (const p of who) this.giveXp(p, out.xp);
+    }
+    if (out.tempHp) {
+      for (const p of this.activePCs()) p.tempHp = Math.max(p.tempHp, out.tempHp);
+      this.addLog('heal', `🛡️ Todo el grupo obtiene ${out.tempHp} puntos de golpe temporales.`, { fx: { kind: 'buff', targets: this.activePCs().map((p) => p.id) } });
+    }
+    if (out.heal) {
+      for (const p of this.activePCs()) {
+        const h = this.healPC(p, roll(out.heal).total);
+        if (h) this.addLog('heal', `${p.name} recupera ${h} PG.`, { fx: { kind: 'heal', target: p.id, amount: h } });
+      }
     }
     if (out.damageFailed) {
       for (const p of failedPCs) {
@@ -300,14 +368,15 @@ class Room {
         this.damagePC(p, d.total, { type: out.damageFailed.type });
       }
     }
+    if (out.peaceful) this.resolvePeacefully();
+    if (out.startCombat && this.encounterPending() && !this.combat) this.startCombat(def.combat);
   }
 
   pcCheck(pc, c) {
-    const t = C.TEMPLATES[pc.templateId];
     let skill = c.skill;
     if (c.altSkill && C.skillMod(pc, c.altSkill) > C.skillMod(pc, c.skill)) skill = c.altSkill;
     const m = C.skillMod(pc, skill);
-    const adv = c.advIf && c.advIf.some((f) => this.flags[f]);
+    const adv = (c.advIf && c.advIf.some((f) => this.flags[f])) || (c.advIfItem && this.activePCs().some((p) => p.inventory[c.advIfItem]));
     const dis = pc.conditions.poisoned || pc.exhaustion > 0 || pc.conditions.frightened;
     const mode = combineMode(adv, dis);
     let r = d20(mode);
@@ -319,8 +388,7 @@ class Room {
       const g = roll('1d4').total; total += g; extra = ` +${g} Orientación`; pc.guidance = false;
     }
     const success = total >= c.dc;
-    void t;
-    return { success, total, text: `[${SKILLS[skill].name}] d20${mode !== 'normal' ? `(${r.dice.join(',')})` : `(${r.natural})`}${fmtMod(m)}${extra} = ${total} vs CD ${c.dc}${lucky}` };
+    return { success, total, nat: r.natural, text: `[${SKILLS[skill].name}] d20${mode !== 'normal' ? `(${r.dice.join(',')} ${mode === 'adv' ? 'ventaja' : 'desventaja'})` : `(${r.natural})`}${fmtMod(m)}${extra} = ${total} vs CD ${c.dc}${lucky}` };
   }
 
   doVote(player, pc, exitIdx) {
@@ -329,9 +397,14 @@ class Room {
     if (!pc) throw new Error('Elige un personaje para votar');
     const def = this.sceneDef();
     const ex = def.exits[exitIdx];
-    if (!ex) throw new Error('Salida no válida');
-    if (def.combat && !this.scene.combatDone) throw new Error('Primero hay que superar el combate');
+    if (!ex || !this.exitVisible(ex)) throw new Error('Esa opción no está disponible ahora');
     if (ex.requires && !ex.requires.some((f) => this.flags[f])) throw new Error('Todavía no podéis ir por ahí');
+    if (ex.fight) {
+      // atacar no se vota: cualquiera puede desenvainar
+      if (pc.hp <= 0) throw new Error('Tu personaje está inconsciente');
+      this.addLog('action', `⚔️ ${pc.name}: ${ex.label}`);
+      return this.startCombat(def.combat);
+    }
     this.scene.votes[player.id] = exitIdx;
     const voters = Object.values(this.players).filter((p) => p.charId && this.pcs[p.charId] && (p.connected || p.id === player.id));
     const count = voters.filter((p) => this.scene.votes[p.id] === exitIdx).length;
@@ -340,6 +413,18 @@ class Room {
       this.addLog('system', `El grupo decide: ${ex.label}.`);
       this.enterScene(ex.to);
     }
+  }
+
+  doBuy(player, pc, itemId) {
+    const def = this.sceneDef();
+    if (!def || !def.shop || this.combat) throw new Error('Aquí no hay tienda');
+    if (!pc) throw new Error('Necesitas un personaje');
+    const price = def.shop[itemId];
+    if (price == null) throw new Error('Eso no se vende aquí');
+    if (this.party.gold < price) throw new Error(`No tenéis suficiente oro (${price} po)`);
+    this.party.gold -= price;
+    pc.inventory[itemId] = (pc.inventory[itemId] || 0) + 1;
+    this.addLog('loot', `🛒 ${pc.name} compra ${ITEMS[itemId].name} por ${price} po.`, { fx: { kind: 'gold', amount: -price } });
   }
 
   doShortRest(player) {
@@ -393,7 +478,7 @@ class Room {
   giveXp(pc, amount) {
     if (pc.dead) return;
     const msgs = C.gainXp(pc, amount);
-    for (const m of msgs) this.addLog('levelup', m);
+    for (const m of msgs) this.addLog('levelup', m, { fx: { kind: 'levelup', who: pc.id, level: pc.level, name: pc.name } });
   }
 
   // ---------------------------------------------------------------- exploración (fuera de combate)
@@ -427,7 +512,7 @@ class Room {
   // ---------------------------------------------------------------- combate
   startCombat(spec) {
     const n = this.activePCs().length;
-    const types = spec.enemies(n);
+    const types = spec.enemies(n, this.flags);
     const counts = {};
     const enemies = {};
     types.forEach((type, i) => {
@@ -443,7 +528,9 @@ class Room {
         hp, maxHp: hp, ac: m.ac, conditions: {}, dead: false,
       };
     });
+    if (spec.adjust) spec.adjust(Object.values(enemies), this.flags, (t) => this.addLog('combat', t));
     this.combat = { round: 1, order: [], turn: 0, enemies, surprised: [], turnState: null, busy: false, xp: 0 };
+    this.scene.encounterStarted = true;
     // sorpresa
     const mode = spec.surprise ? spec.surprise(this.flags) : null;
     if (mode === 'enemies') {
@@ -472,7 +559,7 @@ class Room {
     }
     inits.sort((a, b) => b.init - a.init || b.dex - a.dex || (a.side === 'pc' ? -1 : 1));
     this.combat.order = inits.map(({ id, side, init }) => ({ id, side, init }));
-    this.addLog('combat', `⚔️ ¡Combate! Iniciativa: ${inits.map((i) => i.text).join(', ')}.`);
+    this.addLog('combat', `⚔️ ¡Combate! Iniciativa: ${inits.map((i) => i.text).join(', ')}.`, { fx: { kind: 'combatStart' } });
     this.beginTurn();
   }
 
@@ -492,7 +579,7 @@ class Room {
     if (!cb) return;
     const c = this.current();
     if (!c) return this.endTurn();
-    cb.turnState = { action: 1, bonus: 1, bonusSpell: false, leveledSpell: false, sneakUsed: false, surge: false };
+    cb.turnState = { action: 1, bonus: 1, bonusSpell: false, leveledSpell: false, sneakUsed: false, surge: false, attackedLight: false, offhandUsed: false };
     // efectos que terminan al inicio del turno
     delete c.conditions.dodging;
     delete c.conditions.shield_spell;
@@ -515,7 +602,7 @@ class Room {
         this.addLog('combat', `${c.name} está ${c.conditions.paralyzed ? 'paralizado' : 'inconsciente'} y no puede actuar.`);
         return this.schedule(() => this.endTurn(), Math.min(this.delay, 600));
       }
-      this.addLog('turn', `Turno de ${c.name}.`, { who: c.id });
+      this.addLog('turn', `Turno de ${c.name}.`, { who: c.id, fx: { kind: 'turn', who: c.id } });
       this.maybeAutoTurn();
     } else {
       cb.busy = true;
@@ -599,9 +686,10 @@ class Room {
       pc.concentration = null; pc.spiritualWeapon = 0;
       for (const k of ['blessed', 'shielded', 'dodging', 'shield_spell', 'guided', 'hidden', 'helped', 'slowed_frost', 'prone', 'paralyzed', 'frightened']) delete pc.conditions[k];
     }
-    this.addLog('combat', '🏁 ¡Victoria!');
+    this.addLog('combat', '🏁 ¡Victoria!', { fx: { kind: 'victory' } });
     const v = def.combat.victory;
     if (v.text) this.addLog('narration', v.text);
+    for (const f of v.flags || []) this.flags[f] = true;
     // Regla de la casa: los caídos sobreviven al terminar el combate
     for (const pc of this.partyPCs()) {
       if (pc.dead) {
@@ -624,7 +712,7 @@ class Room {
   }
 
   defeat() {
-    this.addLog('combat', '💀 Todo el grupo ha caído...');
+    this.addLog('combat', '💀 Todo el grupo ha caído...', { fx: { kind: 'defeat' } });
     this.addLog('narration', 'La oscuridad os envuelve. Pero esta no es la forma en que termina vuestra historia: el tiempo parece retroceder y volvéis a estar al principio de esta escena, con la lección aprendida.');
     const cp = clone(this.scene.checkpoint);
     const owners = {};
@@ -635,6 +723,7 @@ class Room {
     this.flags = cp.flags;
     this.combat = null;
     const id = this.sceneId;
+    this.scene.restarting = true;
     this.schedule(() => this.enterScene(id), this.delay ? 2500 : 0);
   }
 
@@ -653,7 +742,7 @@ class Room {
     let total = r.natural + m;
     let extra = '';
     if (pc.conditions.blessed) { const b = roll('1d4').total; total += b; extra = ` +${b} Bendición`; }
-    return { success: total >= dc, total, text: `d20(${r.dice.join(',')})${fmtMod(m)}${extra} = ${total} vs CD ${dc}${note}` };
+    return { success: total >= dc, total, nat: r.natural, text: `d20(${r.dice.join(',')})${fmtMod(m)}${extra} = ${total} vs CD ${dc}${note}` };
   }
 
   monsterSave(e, ability, dc) {
@@ -664,7 +753,7 @@ class Room {
     const bonus = m.saves[ability] ?? mod(m.abilities[ability]);
     const r = d20(ability === 'dex' && e.conditions.dodging ? 'adv' : 'normal');
     const total = r.natural + bonus;
-    return { success: total >= dc, total, text: `d20(${r.dice.join(',')})${fmtMod(bonus)} = ${total} vs CD ${dc}` };
+    return { success: total >= dc, total, nat: r.natural, text: `d20(${r.dice.join(',')})${fmtMod(bonus)} = ${total} vs CD ${dc}` };
   }
 
   deathSave(pc) {
@@ -727,7 +816,7 @@ class Room {
     const modeTxt = mode === 'normal' ? `d20(${r.natural})` : `d20(${r.dice.join(',')} ${mode === 'adv' ? 'ventaja' : 'desventaja'})`;
     const rollTxt = `${modeTxt}${fmtMod(bonus)}${extra} = ${total} vs CA ${targetAC}${note}${why.length ? ` [${why.join(', ')}]` : ''}${shieldNote}`;
     if (!hit) {
-      this.addLog('attack', `${attacker.name} ataca a ${target.name} con ${label}: ${rollTxt} → ${r.natural === 1 ? 'pifia, ' : ''}falla.`, { success: false, who: attacker.id });
+      this.addLog('attack', `${attacker.name} ataca a ${target.name} con ${label}: ${rollTxt} → ${r.natural === 1 ? 'pifia, ' : ''}falla.`, { success: false, who: attacker.id, fx: { kind: 'attack', who: attacker.id, target: target.id, nat: r.natural, total, hit: false, shield: !!shieldNote } });
       return { hit: false, crit: false, mode };
     }
     let expr = crit ? critExpr(dmg) : dmg;
@@ -745,7 +834,7 @@ class Room {
       amount += s.total;
       dmgTxt += ` + ${extraOnHit.label} ${s.detail}`;
     }
-    this.addLog('attack', `${attacker.name} ataca a ${target.name} con ${label}: ${rollTxt} → ${crit ? '¡CRÍTICO! ' : '¡impacta! '}${amount} de daño ${dmgType} (${dmgTxt}).`, { success: true, crit, who: attacker.id });
+    this.addLog('attack', `${attacker.name} ataca a ${target.name} con ${label}: ${rollTxt} → ${crit ? '¡CRÍTICO! ' : '¡impacta! '}${amount} de daño ${dmgType} (${dmgTxt}).`, { success: true, crit, who: attacker.id, fx: { kind: 'attack', who: attacker.id, target: target.id, nat: r.natural, total, hit: true, crit } });
     this.applyDamage(target, amount, { type: dmgType, crit, attacker });
     if (onHit && !target.dead && !(tgtPC && target.hp <= 0)) onHit(target);
     return { hit: true, crit, mode };
@@ -759,6 +848,7 @@ class Room {
     if (m.immune && m.immune.includes(opts.type)) { a = 0; this.addLog('combat', `${target.name} es inmune al daño ${opts.type}.`); }
     if (a <= 0) return;
     target.hp -= a;
+    this.fxPush({ kind: 'dmg', target: target.id, amount: a, crit: !!opts.crit });
     if (target.conditions.unconscious) { delete target.conditions.unconscious; this.addLog('combat', `${target.name} se despierta de golpe.`); }
     if (target.conditions.turned) { delete target.conditions.turned; }
     if (target.hp <= 0) {
@@ -772,7 +862,7 @@ class Room {
       }
       target.hp = 0;
       target.dead = true;
-      this.addLog('kill', `💥 ${target.name} cae derrotado.`);
+      this.addLog('kill', `💥 ${target.name} cae derrotado.`, { fx: { kind: 'kill', target: target.id } });
       // si estaba inmovilizado por concentración, se libera la concentración
       for (const pc of this.partyPCs()) if (pc.concentration && pc.concentration.enemies && pc.concentration.enemies.includes(target.id) && pc.concentration.spell === 'hold_person') this.breakConcentration(pc, 'el objetivo ha caído');
     }
@@ -790,6 +880,7 @@ class Room {
       return;
     }
     pc.hp -= a;
+    this.fxPush({ kind: 'dmg', target: pc.id, amount: a, crit: !!opts.crit });
     if (pc.hp <= 0) {
       const overflow = -pc.hp;
       pc.hp = 0;
@@ -800,7 +891,7 @@ class Room {
         pc.conditions.unconscious = {};
         pc.conditions.prone = {};
         pc.deathSaves = { s: 0, f: 0 };
-        this.addLog('down', `🩸 ${pc.name} cae inconsciente a 0 PG. ¡Necesita ayuda!`);
+        this.addLog('down', `🩸 ${pc.name} cae inconsciente a 0 PG. ¡Necesita ayuda!`, { fx: { kind: 'down', target: pc.id } });
       }
       if (pc.concentration) this.breakConcentration(pc, 'ha caído');
       pc.spiritualWeapon = 0;
@@ -818,6 +909,7 @@ class Room {
     if (pc.dead) return 0;
     const before = pc.hp;
     pc.hp = Math.min(pc.maxHp, pc.hp + amount);
+    if (pc.hp > before) this.fxPush({ kind: 'heal', target: pc.id, amount: pc.hp - before });
     if (before <= 0 && pc.hp > 0) {
       pc.deathSaves = { s: 0, f: 0 }; pc.stable = false; delete pc.conditions.unconscious;
       this.addLog('combat', `${pc.name} recupera la consciencia.`);
@@ -925,6 +1017,11 @@ class Room {
     if (t.cls === 'rogue' && pc.level >= 2 && ts.bonus > 0 && !pc.conditions.hidden) {
       out.push({ key: 'hide', cost: 'bonus', group: 'Rasgos', label: 'Acción astuta: Esconderse (Sigilo)', target: 'none', desc: FEATURES.cunning_action.desc });
     }
+    const offhand = C.weaponAttacks(pc).filter((w) => w.light && !w.ranged);
+    if (ts.attackedLight && !ts.offhandUsed && ts.bonus > 0 && offhand.length >= 2) {
+      const w = offhand[offhand.length - 1];
+      out.push({ key: 'offhand', cost: 'bonus', group: 'Atacar', label: `Ataque con la mano torpe (${w.name}, ${w.dmgOff})`, target: 'enemy', desc: 'Combate con dos armas: tras atacar con un arma ligera, puedes atacar con la otra como acción adicional. No sumas tu modificador de característica al daño.' });
+    }
     if (pc.spiritualWeapon > 0 && ts.bonus > 0) {
       out.push({ key: 'spiritual_attack', cost: 'bonus', group: 'Rasgos', label: 'Atacar con el Arma espiritual', target: 'enemy', desc: SPELLS.spiritual_weapon.desc });
     }
@@ -938,6 +1035,7 @@ class Room {
     }
     // acciones generales
     if (ts.action > 0) {
+      out.push({ key: 'shove', cost: 'action', group: 'Atacar', label: `Empujar y derribar (Atletismo ${fmtMod(C.skillMod(pc, 'athletics'))})`, target: 'enemy', desc: 'Prueba enfrentada de Atletismo contra el Atletismo o las Acrobacias del objetivo. Si ganas, queda derribado: los ataques cuerpo a cuerpo contra él tienen ventaja hasta que se levante en su turno.' });
       out.push({ key: 'dodge', cost: 'action', group: 'Otras', label: 'Esquivar', target: 'none', desc: CONDITIONS.dodging.desc });
       if (this.activePCs().some((p) => p.id !== pc.id && p.hp > 0)) out.push({ key: 'help', cost: 'action', group: 'Otras', label: 'Ayudar a un aliado', target: 'allyOther', desc: 'El aliado elegido tiene ventaja en su próxima tirada de ataque.' });
       if (this.activePCs().some((p) => p.hp <= 0 && !p.stable)) {
@@ -980,6 +1078,7 @@ class Room {
     if (a.key.startsWith('attack:')) {
       const w = C.weaponAttacks(pc)[+a.key.split(':')[1]];
       spend();
+      if (w.light && !w.ranged) ts.attackedLight = true;
       this.resolveAttack(pc, enemyT[0], {
         bonus: w.toHit, dmg: w.dmg, dmgType: w.type, ranged: w.ranged, label: w.name, critOn: C.critRange(pc),
         sneak: (w.finesse || w.ranged) ? C.sneakDice(pc) : null,
@@ -994,6 +1093,22 @@ class Room {
     } else if (a.key === 'stabilize') {
       spend();
       this.performUtility(pc, 'stabilize', allyT, true);
+    } else if (a.key === 'offhand') {
+      spend(); ts.offhandUsed = true;
+      const ws = C.weaponAttacks(pc).filter((x) => x.light && !x.ranged);
+      const w = ws[ws.length - 1];
+      this.resolveAttack(pc, enemyT[0], { bonus: w.toHit, dmg: w.dmgOff, dmgType: w.type, label: `${w.name} (mano torpe)`, critOn: C.critRange(pc), sneak: w.finesse ? C.sneakDice(pc) : null });
+    } else if (a.key === 'shove') {
+      spend();
+      const e = enemyT[0];
+      const m = MONSTERS[e.type];
+      const pr = d20().natural; const pm = C.skillMod(pc, 'athletics'); const pt = pr + pm;
+      const em = Math.max(mod(m.abilities.str), mod(m.abilities.dex));
+      const er = e.conditions.paralyzed || e.conditions.unconscious ? null : d20().natural;
+      const et = er === null ? -99 : er + em;
+      const ok = pt > et || (pt === et && false);
+      if (ok) e.conditions.prone = {};
+      this.addLog('roll', `${pc.name} intenta derribar a ${e.name}: Atletismo d20(${pr})${fmtMod(pm)} = ${pt} vs ${er === null ? 'indefenso' : `d20(${er})${fmtMod(em)} = ${et}`} → ${ok ? '¡lo tira al suelo!' : 'aguanta en pie'}.`, { success: ok, fx: { kind: 'attack', who: pc.id, target: e.id, nat: pr, total: pt, hit: ok, shove: true } });
     } else if (a.key === 'dodge') {
       spend(); pc.conditions.dodging = {};
       this.addLog('action', `${pc.name} adopta una postura defensiva (Esquivar): los ataques contra él tienen desventaja.`);
@@ -1065,7 +1180,7 @@ class Room {
     }
     const up = Math.max(0, slot - s.level);
     const upDice = (base, per) => (per && up ? `${base}+${up}${per.replace(/^1/, '')}` : base);
-    this.addLog('spell', `✨ ${pc.name} lanza ${s.name}${slot ? ` (espacio de nivel ${slot})` : ''}.`);
+    this.addLog('spell', `✨ ${pc.name} lanza ${s.name}${slot ? ` (espacio de nivel ${slot})` : ''}.`, { fx: { kind: 'spell', who: pc.id, school: s.school, dmgType: s.dmgType || null, heal: s.kind === 'heal' } });
     if (s.conc) {
       if (pc.concentration) this.breakConcentration(pc, `empieza a concentrarse en ${s.name}`);
     }
@@ -1256,7 +1371,8 @@ class Room {
       players: Object.values(this.players).map((p) => ({ id: p.id, name: p.name, charId: p.charId, connected: p.connected, isHost: p.id === this.hostId })),
       catalog: Object.values(C.TEMPLATES).map((t) => {
         const taken = Object.values(this.players).find((p) => p.charId === t.id);
-        return { id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, takenBy: taken ? taken.name : null, takenById: taken ? taken.id : null };
+        const pre = C.createPC(t.id);
+        return { id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, role: t.role, stats: t.stats, hp: pre.maxHp, ac: C.armorClass(pre), takenBy: taken ? taken.name : null, takenById: taken ? taken.id : null };
       }),
       adventure: { title: ADVENTURE.title, summary: ADVENTURE.summary },
       pcs: this.partyPCs().map((p) => this.pcView(p)),
@@ -1266,20 +1382,25 @@ class Room {
     };
     if (def && this.phase !== 'lobby') {
       const voters = Object.values(this.players).filter((p) => p.charId && this.pcs[p.charId] && p.connected);
-      const blocked = !!def.combat && !this.scene.combatDone; // combate pendiente (p. ej. tras una derrota)
+      const n = this.partyPCs().length;
       v.scene = {
-        id: this.sceneId, title: def.title, end: !!def.end,
-        checks: (blocked ? [] : def.checks || []).filter((c) => this.checkVisible(c)).map((c) => {
+        id: this.sceneId, title: def.title, end: !!def.end, art: def.art || this.sceneId,
+        encounter: this.encounterPending() && !this.combat,
+        checks: (def.checks || []).filter((c) => this.checkVisible(c)).map((c) => {
           const st = this.scene.checks[c.id];
-          return { id: c.id, label: c.label, group: c.mode === 'group', done: !!(st && st.done), result: st ? st.result : null, triedByMe: !!(st && myPc && st.attempts.includes(myPc.id)) };
+          return {
+            id: c.id, label: c.label, group: c.mode === 'group', auto: !!c.auto, pre: !!c.preCombat, cost: c.cost ? c.cost * n : 0, needsItem: c.needsItem ? ITEMS[c.needsItem].name : null,
+            done: !!(st && st.done), result: st ? st.result : null, triedByMe: !!(st && myPc && st.attempts.includes(myPc.id)),
+          };
         }),
-        exits: (blocked ? [] : def.exits || []).map((ex, i) => ({
-          idx: i, label: ex.label, enabled: !ex.requires || ex.requires.some((f) => this.flags[f]),
+        exits: (def.exits || []).map((ex, i) => ({ ex, i })).filter(({ ex }) => this.exitVisible(ex)).map(({ ex, i }) => ({
+          idx: i, label: ex.label, fight: !!ex.fight, enabled: !ex.requires || ex.requires.some((f) => this.flags[f]),
           votes: Object.entries(this.scene.votes).filter(([, x]) => x === i).map(([p]) => this.players[p] && this.players[p].name).filter(Boolean),
           myVote: me ? this.scene.votes[me.id] === i : false,
         })),
         voters: voters.length,
-        shortRest: !!def.shortRest && !this.scene.restUsed && !this.combat && !blocked,
+        shortRest: !!def.shortRest && !this.scene.restUsed && !this.combat && !this.encounterPending() && !this.scene.restarting,
+        shop: def.shop && !this.combat ? Object.entries(def.shop).map(([id, price]) => ({ id, name: ITEMS[id].name, price, desc: ITEMS[id].desc })) : null,
       };
     }
     if (this.combat) {
@@ -1289,7 +1410,7 @@ class Room {
         round: cb.round, currentId: cur ? cur.id : null, busy: cb.busy,
         order: cb.order.map((o) => {
           const c = this.getCombatant(o.id);
-          return { id: o.id, side: o.side, init: o.init, name: c ? c.name : '?', dead: c ? !!c.dead : true };
+          return { id: o.id, side: o.side, init: o.init, name: c ? c.name : '?', dead: c ? !!c.dead : true, type: c && c.type ? c.type : null, portrait: c && c.templateId ? C.TEMPLATES[c.templateId].portrait : null };
         }),
         enemies: Object.values(cb.enemies).map((e) => {
           const m = MONSTERS[e.type];

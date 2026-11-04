@@ -1,16 +1,16 @@
 // Objetos del SRD 5.1. Armas: dmg, type, props, finesse, ranged.
 module.exports = {
   // ---------- Armas ----------
-  dagger: { name: 'Daga', category: 'Arma sencilla cuerpo a cuerpo', cost: '2 po', weight: '1 lb', dmg: '1d4', type: 'perforante', finesse: true, props: 'Sutil, ligera, arrojadiza (20/60)', desc: 'Hoja corta y fácil de esconder.' },
+  dagger: { name: 'Daga', category: 'Arma sencilla cuerpo a cuerpo', cost: '2 po', weight: '1 lb', dmg: '1d4', type: 'perforante', finesse: true, light: true, props: 'Sutil, ligera, arrojadiza (20/60)', desc: 'Hoja corta y fácil de esconder.' },
   mace: { name: 'Maza', category: 'Arma sencilla cuerpo a cuerpo', cost: '5 po', weight: '4 lb', dmg: '1d6', type: 'contundente', props: '—', desc: 'Cabeza de metal pesada sobre un mango.' },
   quarterstaff: { name: 'Bastón', category: 'Arma sencilla cuerpo a cuerpo', cost: '2 pp', weight: '4 lb', dmg: '1d6', type: 'contundente', props: 'Versátil (1d8)', desc: 'Vara larga de madera dura.' },
   light_crossbow: { name: 'Ballesta ligera', category: 'Arma sencilla a distancia', cost: '25 po', weight: '5 lb', dmg: '1d8', type: 'perforante', ranged: true, props: 'Munición (80/320), carga, a dos manos', desc: 'Dispara virotes con un mecanismo de gatillo.' },
   shortbow: { name: 'Arco corto', category: 'Arma sencilla a distancia', cost: '25 po', weight: '2 lb', dmg: '1d6', type: 'perforante', ranged: true, props: 'Munición (80/320), a dos manos', desc: 'Arco compacto, cómodo en espacios estrechos.' },
   javelin: { name: 'Jabalina', category: 'Arma sencilla cuerpo a cuerpo', cost: '5 pp', weight: '2 lb', dmg: '1d6', type: 'perforante', ranged: true, props: 'Arrojadiza (30/120)', desc: 'Lanza ligera pensada para arrojarse.' },
   longsword: { name: 'Espada larga', category: 'Arma marcial cuerpo a cuerpo', cost: '15 po', weight: '3 lb', dmg: '1d8', type: 'cortante', props: 'Versátil (1d10)', desc: 'La espada clásica de caballeros y soldados.' },
-  shortsword: { name: 'Espada corta', category: 'Arma marcial cuerpo a cuerpo', cost: '10 po', weight: '2 lb', dmg: '1d6', type: 'perforante', finesse: true, props: 'Sutil, ligera', desc: 'Hoja ágil, favorita de pícaros y duelistas.' },
+  shortsword: { name: 'Espada corta', category: 'Arma marcial cuerpo a cuerpo', cost: '10 po', weight: '2 lb', dmg: '1d6', type: 'perforante', finesse: true, light: true, props: 'Sutil, ligera', desc: 'Hoja ágil, favorita de pícaros y duelistas.' },
   warhammer: { name: 'Martillo de guerra', category: 'Arma marcial cuerpo a cuerpo', cost: '15 po', weight: '2 lb', dmg: '1d8', type: 'contundente', props: 'Versátil (1d10)', desc: 'Martillo de combate. Muy eficaz contra esqueletos.' },
-  scimitar: { name: 'Cimitarra', category: 'Arma marcial cuerpo a cuerpo', cost: '25 po', weight: '3 lb', dmg: '1d6', type: 'cortante', finesse: true, props: 'Sutil, ligera', desc: 'Hoja curva y ligera.' },
+  scimitar: { name: 'Cimitarra', category: 'Arma marcial cuerpo a cuerpo', cost: '25 po', weight: '3 lb', dmg: '1d6', type: 'cortante', finesse: true, light: true, props: 'Sutil, ligera', desc: 'Hoja curva y ligera.' },
   morningstar: { name: 'Lucero del alba', category: 'Arma marcial cuerpo a cuerpo', cost: '15 po', weight: '4 lb', dmg: '1d8', type: 'perforante', props: '—', desc: 'Bola de hierro con púas sobre un mango.' },
   // ---------- Armaduras ----------
   leather: { name: 'Armadura de cuero', category: 'Armadura ligera', cost: '10 po', weight: '10 lb', ac: '11 + mod. Des', desc: 'Peto y hombreras de cuero endurecido.' },

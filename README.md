@@ -4,11 +4,12 @@ Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edici
 
 - **Salas multijugador** con código de invitación (1 a 4 jugadores; los demás pueden mirar).
 - **4 personajes pre-hechos** (Guerrero humano, Clériga enana, Pícara mediana, Mago elfo) con ficha completa.
-- **Aventura corta original**: *La Sombra bajo Robledal* (9 escenas: decisiones por votación, pruebas de habilidad, trampas, descansos, 3 combates y un jefe final).
+- **Aventura corta original**: *La Sombra bajo Robledal*, con 11 escenas y varios caminos: una ruta por el río, un pasadizo secreto, una tienda en la posada, y encuentros que se pueden resolver hablando, sobornando, engañando o con sigilo en vez de a espadazos. Las decisiones cambian el epílogo.
 - **Dados**: bandeja de dados (d4 a d100, ventaja/desventaja), comando `/r 2d6+3` en el chat y tiradas desde la ficha (habilidades, salvaciones, características).
 - **Chat** de la mesa en tiempo real.
 - **Combate por turnos** con iniciativa, sorpresa, acción / acción adicional / reacción, críticos, salvaciones contra muerte, concentración, condiciones y una IA sencilla para los enemigos.
 - **Progresión**: experiencia por enemigos e hitos, subida de nivel automática (niveles 1 → 3) con nuevos PG, rasgos, conjuros y espacios.
+- **Interfaz ilustrada y animada**: cada escena tiene su ilustración y partículas (lluvia, luciérnagas, niebla, ascuas…), dados d20 que ruedan en pantalla, números de daño y curación, barras de vida animadas, sellos de «¡Combate!», «¡Victoria!» y «Tu turno», y una pantalla de subida de nivel. El botón ✨ Animaciones las desactiva (también respeta la preferencia de «reducir movimiento» del sistema).
 - **Glosario** con buscador (`/glosario`): reglas básicas, habilidades, rasgos y pasivas, objetos, conjuros, condiciones y criaturas.
 
 No necesita base de datos ni dependencias: solo Node.js.
@@ -38,16 +39,17 @@ El servidor tiene que ser accesible desde internet. Opciones sencillas:
 ## Cómo se juega
 
 1. Cada jugador elige un personaje en el lobby. El anfitrión (👑) pulsa **Comenzar aventura**.
-2. En cada escena podéis intentar **pruebas** (las tira quien pulsa el botón; las de grupo 👥 las tira todo el grupo) y luego **votar** el siguiente paso (gana la mayoría).
-3. En **combate**, cuando sea tu turno verás tus opciones: atacar, conjuros, rasgos, objetos, Esquivar, Ayudar, Estabilizar… Elige la acción y luego el objetivo. El turno termina solo cuando no te quedan acciones útiles, o con **Terminar turno**.
-4. Al ganar un combate se reparte la experiencia y el botín (cualquiera puede **coger** objetos del panel de botín).
-5. Haz clic en cualquier personaje para ver su ficha.
+2. En cada escena podéis intentar **pruebas** (las tira quien pulsa la tarjeta; las de grupo 👥 las tira todo el grupo), **comprar** con el oro del grupo donde haya tienda, y luego **votar** el siguiente paso (gana la mayoría).
+3. Algunos encuentros no empiezan solos: podéis intentar una salida pacífica (pagar, engañar, calmar a los lobos, liberar a los mineros…) o votar **¡Atacar!**. Si la opción pacífica sale bien, os ahorráis el combate y también ganáis experiencia.
+4. En **combate**, cuando sea tu turno verás tus opciones: atacar, empujar y derribar, atacar con la mano torpe (dos armas ligeras), conjuros, rasgos, objetos, Esquivar, Ayudar, Estabilizar… Elige la acción y luego el objetivo. El turno termina solo cuando no te quedan acciones útiles, o con **Terminar turno**.
+5. Al ganar un combate se reparte la experiencia y el botín (cualquiera puede **coger** objetos del panel de botín).
+6. Haz clic en cualquier personaje para ver su ficha.
 
 ## Reglas implementadas (SRD 5.1)
 
 - Pruebas de característica y habilidad, competencia y pericia, pruebas de grupo, ventaja/desventaja.
 - Iniciativa, sorpresa (Percepción pasiva contra Sigilo), acción, acción adicional y reacción.
-- Ataques con arma y de conjuro, críticos (y Crítico mejorado del Campeón), armas sutiles y a distancia.
+- Ataques con arma y de conjuro, críticos (y Crítico mejorado del Campeón), armas sutiles y a distancia, combate con dos armas ligeras, Empujar (prueba enfrentada de Atletismo para derribar).
 - Resistencias, vulnerabilidades e inmunidades de los monstruos; Fortaleza de muerto viviente del zombi.
 - Condiciones: derribado, paralizado, inconsciente, envenenado, asustado, agotamiento…, más efectos como Esquivando, Bendecido, Escondido.
 - 0 PG, salvaciones contra muerte, estabilizar, daño masivo.
@@ -74,11 +76,11 @@ src/dice.js            Tiradas de dados (notación XdY+Z, kh/kl, ventaja)
 src/rules.js           Reglas básicas: modificadores, competencia, tabla de PX
 src/glossary.js        Genera el glosario a partir de los datos
 src/data/              Habilidades, condiciones, conjuros, objetos, rasgos, personajes, monstruos y la aventura
-public/                Interfaz web (HTML/CSS/JS sin frameworks) y glosario
-test/playthrough.js    Simula 160 partidas completas con bots (npm test)
+public/                Interfaz web (HTML/CSS/JS sin frameworks), glosario y fx.js (ilustraciones SVG, partículas y animaciones)
+test/playthrough.js    Simula 160 partidas completas con bots que eligen ramas al azar (npm test)
 ```
 
-Para crear otra aventura, copia `src/data/adventure.js`: cada escena tiene texto, pruebas (`checks`), trampas, combate (`combat`) y salidas (`exits`) que dependen de *flags*.
+Para crear otra aventura, copia `src/data/adventure.js`: el comentario del principio explica el formato. Cada escena tiene ilustración (`art`), textos que dependen de *flags*, pruebas (`checks`, con coste, objeto necesario o resultado pacífico), tienda (`shop`), trampas, combate (`combat`, que puede esperar a que el grupo decida) y salidas (`exits`).
 
 ## Ideas para siguientes versiones
 

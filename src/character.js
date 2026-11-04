@@ -126,7 +126,8 @@ function weaponAttacks(pc) {
     return {
       idx, item: w.item, name: it.name + (magic ? ' +1' : ''), toHit: m + pb + magic,
       dmg: `${it.dmg}${dmgBonus >= 0 ? '+' : ''}${dmgBonus}`, type: it.type,
-      finesse: !!it.finesse, ranged: !!it.ranged,
+      finesse: !!it.finesse, ranged: !!it.ranged, light: !!it.light,
+      dmgOff: `${it.dmg}${magic + Math.min(0, m) ? (magic + Math.min(0, m) > 0 ? '+' : '') + (magic + Math.min(0, m)) : ''}`,
     };
   });
 }

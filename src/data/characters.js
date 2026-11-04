@@ -3,7 +3,7 @@
 module.exports = {
   darian: {
     id: 'darian', name: 'Darío Montefrío', race: 'Humano', className: 'Guerrero', cls: 'fighter', subclass: 'Arquetipo: Campeón (a nivel 3)',
-    portrait: '🛡️', color: '#c0392b',
+    portrait: '🛡️', color: '#c0392b', role: 'Primera línea: aguanta golpes y reparte espadazos', stats: { ataque: 4, defensa: 5, magia: 0, apoyo: 1, sigilo: 1 },
     background: 'Soldado',
     bio: 'Exsargento de la guardia del paso de Montefrío. Desertó cuando le ordenaron quemar una aldea y desde entonces protege a quien no puede protegerse solo. Habla poco y duerme con la espada al alcance.',
     abilities: { str: 16, dex: 13, con: 15, int: 9, wis: 14, cha: 11 },
@@ -18,7 +18,7 @@ module.exports = {
   },
   brenna: {
     id: 'brenna', name: 'Brenna Yunquebrasa', race: 'Enana de las colinas', className: 'Clériga', cls: 'cleric', subclass: 'Dominio de la Vida',
-    portrait: '⚒️', color: '#d4a017',
+    portrait: '⚒️', color: '#d4a017', role: 'Sanadora y apoyo: cura, bendice y expulsa muertos', stats: { ataque: 2, defensa: 4, magia: 3, apoyo: 5, sigilo: 0 },
     background: 'Acólita',
     bio: 'Sacerdotisa de la forja del templo de su clan. Cree que todo lo roto puede repararse, sea una espada o una persona. Lleva al cuello el martillo sagrado de su abuela y una paciencia infinita para los heridos (no tanto para los cobardes).',
     abilities: { str: 13, dex: 10, con: 16, int: 8, wis: 16, cha: 12 },
@@ -33,7 +33,7 @@ module.exports = {
   },
   lia: {
     id: 'lia', name: 'Lía Zarzaleja', race: 'Mediana piesligeros', className: 'Pícara', cls: 'rogue', subclass: 'Arquetipo: Ladrona (a nivel 3)',
-    portrait: '🗡️', color: '#27ae60',
+    portrait: '🗡️', color: '#27ae60', role: 'Sigilo y golpes certeros: ataque furtivo y trampas', stats: { ataque: 4, defensa: 2, magia: 0, apoyo: 1, sigilo: 5 },
     background: 'Criminal',
     bio: 'Creció robando manzanas y bolsas en los mercados de Ribaseca. Debe dinero a gente peligrosa y busca un golpe de suerte que la saque del apuro. Encantadora, curiosa y absolutamente incapaz de resistirse a una cerradura.',
     abilities: { str: 8, dex: 17, con: 14, int: 12, wis: 10, cha: 14 },
@@ -47,7 +47,7 @@ module.exports = {
   },
   ithriel: {
     id: 'ithriel', name: 'Ithriel Velanor', race: 'Alto elfo', className: 'Mago', cls: 'wizard', subclass: 'Escuela de Evocación (a nivel 2)',
-    portrait: '🔮', color: '#2980b9',
+    portrait: '🔮', color: '#2980b9', role: 'Magia de área y control: fuego, sueño y proyectiles', stats: { ataque: 3, defensa: 1, magia: 5, apoyo: 1, sigilo: 2 },
     background: 'Sabio',
     bio: 'Erudito de la biblioteca de Aguaclara, expulsado por "tomar prestado" un grimorio prohibido. Busca en las ruinas antiguas el conocimiento que los libros le niegan. Pedante, valiente cuando no hay más remedio, y sorprendentemente buen cocinero.',
     abilities: { str: 8, dex: 15, con: 14, int: 16, wis: 12, cha: 10 },

@@ -21,6 +21,8 @@ function botTurn(room, pid) {
     pick((x) => x.key === 'spell:bless' && !me.concentration) ||
     pick((x) => x.key === 'spell:spiritual_weapon') ||
     pick((x) => x.key === 'spiritual_attack') ||
+    pick((x) => x.key === 'offhand') ||
+    (Math.random() < 0.1 && pick((x) => x.key === 'shove')) ||
     pick((x) => x.key === 'hide') ||
     (enemies.length >= 2 && pick((x) => x.key === 'spell:sleep')) ||
     (enemies.some((e) => e.mtype === 'humanoide') && pick((x) => x.key === 'spell:hold_person' && !me.concentration)) ||
@@ -79,26 +81,47 @@ function play(nPlayers, verbose = false) {
       void me;
     }
     if (v.scene.shortRest && room.activePCs().some((p) => p.hp < p.maxHp * 0.75)) room.handle(pids[0], { type: 'rest' });
-    const check = v.scene.checks.find((c) => !c.done && !c.triedByMe && c.id !== 'force');
+    // tienda: comprar una poción si sobra oro
+    if (v.scene.shop && v.party.gold >= 50 && Math.random() < 0.7) room.handle(pids[0], { type: 'buy', item: 'potion_healing' });
+    // encuentro pendiente: probar a veces una opción previa, si no atacar
+    if (v.scene.encounter) {
+      const pre = v.scene.checks.filter((c) => c.pre && !c.done && !c.triedByMe && (!c.cost || v.party.gold >= c.cost));
+      const fight = v.scene.exits.find((e) => e.fight);
+      if (pre.length && Math.random() < 0.6) {
+        const c = pre[Math.floor(Math.random() * pre.length)];
+        try { room.handle(pids[Math.floor(Math.random() * pids.length)], { type: 'check', checkId: c.id }); } catch (e) { if (!/necesita|oro/.test(e.message)) throw e; room.handle(pids[0], { type: 'vote', exit: fight.idx }); }
+      } else room.handle(pids[0], { type: 'vote', exit: fight.idx });
+      stats.encounters[v.scene.id + (room.combat ? ':lucha' : ':paz')] = (stats.encounters[v.scene.id + (room.combat ? ':lucha' : ':paz')] || 0) + 1;
+      continue;
+    }
+    const check = v.scene.checks.find((c) => !c.done && !c.triedByMe && c.id !== 'force' && !c.cost && !c.needsItem && Math.random() < 0.8);
     if (check) {
-      // que lo intente el primer personaje que aún no lo haya hecho
       const who = pids.find((p) => !room.viewFor(p).scene.checks.find((c) => c.id === check.id).triedByMe) || pids[0];
       room.handle(who, { type: 'check', checkId: check.id });
       continue;
     }
     const force = v.scene.checks.find((c) => c.id === 'force' && !c.done);
-    const exit = v.scene.exits.find((e) => e.enabled);
-    if (!exit && force) { room.handle(pids[0], { type: 'check', checkId: 'force' }); continue; }
-    if (!exit) throw new Error('Escena sin salida: ' + v.scene.id);
+    const exits = v.scene.exits.filter((e) => e.enabled && !e.fight);
+    if (!exits.length && force) { room.handle(pids[0], { type: 'check', checkId: 'force' }); continue; }
+    if (!exits.length) {
+      // quizá falte una prueba obligatoria (p. ej. cruzar el vado)
+      const pending = v.scene.checks.find((c) => !c.done && !c.triedByMe);
+      if (pending) { room.handle(pids[0], { type: 'check', checkId: pending.id }); continue; }
+      throw new Error('Escena sin salida: ' + v.scene.id);
+    }
+    const exit = exits[Math.floor(Math.random() * exits.length)];
+    stats.scenes[exit.label] = (stats.scenes[exit.label] || 0) + 1;
     for (const pid of pids) if (room.sceneId === v.scene.id && !room.combat) room.handle(pid, { type: 'vote', exit: exit.idx });
   }
   if (verbose) for (const l of room.log) console.log(`[${l.kind}] ${l.text}`);
   assert.strictEqual(room.phase, 'ended', 'la aventura debería terminar');
+  for (const p of room.partyPCs()) assert.strictEqual(p.level, 3, p.name + ' debería acabar en nivel 3 (' + p.xp + ' PX)');
   const lv = room.partyPCs().map((p) => `${p.name.split(' ')[0]} nv${p.level} ${p.xp}PX ${p.hp}/${p.maxHp}`);
   return { steps, lv, defeats: room.log.filter((l) => l.text.startsWith('💀')).length, deaths: room.log.filter((l) => l.text.includes('Regla de la casa')).length };
 }
 
 assert.ok(roll('2d6+3').total >= 5);
+const stats = { scenes: {}, encounters: {} };
 const verbose = process.argv.includes('-v');
 const N = verbose ? 1 : 40;
 for (const n of [1, 2, 3, 4]) {
@@ -106,4 +129,6 @@ for (const n of [1, 2, 3, 4]) {
   for (let i = 0; i < N; i++) { last = play(n, verbose && n === 4); defeats += last.defeats; deaths += last.deaths; }
   console.log(`${n} jugador(es): ${N} partidas OK · derrotas totales ${defeats} · caídos reanimados ${deaths} · ejemplo final: ${last.lv.join(' | ')}`);
 }
+console.log('Encuentros:', JSON.stringify(stats.encounters));
+console.log('Rutas elegidas:', JSON.stringify(stats.scenes));
 console.log('✔ Todas las partidas simuladas terminaron correctamente.');
