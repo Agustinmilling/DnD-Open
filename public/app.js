@@ -10,7 +10,13 @@
   const ABIL_FULL = { str: 'Fuerza', dex: 'Destreza', con: 'Constitución', int: 'Inteligencia', wis: 'Sabiduría', cha: 'Carisma' };
   const COST = { action: 'Acción', bonus: 'Adicional', free: 'Gratis', reaction: 'Reacción' };
   const GROUP_KIND = { Atacar: 'attack', Conjuros: 'spell', Rasgos: 'feat', Objetos: 'item' };
-  const MONSTER_ICON = { goblin: '👺', wolf: '🐺', skeleton: '🦴', zombie: '🧟', giant_rat: '🐀', ghoul: '💀', bugbear: '👹' };
+  const MONSTER_ICON = {
+    goblin: '👺', wolf: '🐺', skeleton: '🦴', zombie: '🧟', giant_rat: '🐀', ghoul: '💀', bugbear: '👹',
+    bandit: '🗡️', thug: '🥊', bandit_captain: '🏴‍☠️', cultist: '🕯️', cult_fanatic: '🔱', kobold: '🦎', orc: '🐗', hobgoblin: '🪖',
+    guard: '💂', spy: '🕵️', veteran: '🎖️', sahuagin: '🦈', giant_spider: '🕷️', stirge: '🦟', dire_wolf: '🐺', ogre: '🧌',
+    merrow: '🧜', giant_crab: '🦀', shadow: '👤', specter: '👻', ghast: '☠️', animated_armor: '🛡️',
+  };
+  const TONE = { good: 'Final feliz', mixed: 'Final agridulce', bad: 'Final oscuro' };
   const STAT_LABELS = { ataque: 'Ataque', defensa: 'Defensa', magia: 'Magia', apoyo: 'Apoyo', sigilo: 'Sigilo' };
   const GOOD_CONDS = ['blessed', 'shielded', 'dodging', 'hidden', 'helped', 'shield_spell'];
 
@@ -61,7 +67,8 @@
   async function send(msg) {
     try {
       await api('/api/action', { code: S.code, pid: S.pid, token: S.token, msg });
-    } catch (e) { toast(e.message); }
+      return true;
+    } catch (e) { toast(e.message); return false; }
   }
   function toast(text, info = false) {
     const t = $('#toast');
@@ -209,14 +216,15 @@
       ? `<button class="btn small" data-release>Dejar personaje</button>`
       : c.takenBy ? `<button class="btn small" disabled>Elegido por ${esc(c.takenBy)}</button>`
       : `<button class="btn small primary" data-pick="${c.id}">Jugar con ${esc(c.name.split(' ')[0])}</button>`;
-    return `<article class="char-card ${mine ? 'mine' : ''} ${c.takenBy ? 'taken' : ''}" style="--c:${c.color}">
-      <div class="char-head"><span class="medallion">${c.portrait}</span>
+    return `<article class="char-card ${mine ? 'mine' : ''} ${c.takenBy ? 'taken' : ''} ${c.custom ? 'custom' : ''}" style="--c:${c.color}">
+      ${c.custom ? `<span class="custom-badge">${c.mine ? '✦ Tu creación' : '✦ Creado en la sala'}</span>` : ''}
+      <div class="char-head"><span class="medallion">${esc(c.portrait)}</span>
         <div><h4>${esc(c.name)}</h4><div class="sub">${esc(c.race)} · ${esc(c.className)}</div></div></div>
       ${c.role ? `<div class="role">${esc(c.role)}</div>` : ''}
       <div class="quick-stats"><span>❤️ PG <b>${c.hp}</b></span><span>🛡️ CA <b>${c.ac}</b></span><span>${esc(c.background)}</span></div>
       ${statBars(c.stats)}
       <p>${esc(c.bio)}</p>
-      <div class="row"><button class="btn small ghost" data-view="${c.id}">Ver ficha</button>${btn}</div>
+      <div class="row"><button class="btn small ghost" data-view="${c.id}">Ver ficha</button>${btn}${c.custom && (c.mine || (v.you && v.you.isHost)) && v.phase === 'lobby' ? `<button class="btn small ghost danger" data-del="${c.id}" title="Borrar personaje" aria-label="Borrar ${esc(c.name)}">🗑</button>` : ''}</div>
     </article>`;
   }
 
@@ -224,13 +232,27 @@
     $$('[data-pick]', root).forEach((b) => (b.onclick = () => send({ type: 'pick', charId: b.dataset.pick })));
     $$('[data-release]', root).forEach((b) => (b.onclick = () => send({ type: 'release' })));
     $$('[data-view]', root).forEach((b) => (b.onclick = () => openSheet(b.dataset.view)));
+    $$('[data-del]', root).forEach((b) => (b.onclick = () => { if (confirm('¿Borrar este personaje? No se puede deshacer.')) send({ type: 'deleteChar', charId: b.dataset.del }); }));
   }
 
   function renderLobby(v) {
-    if (!$('#lobbyArt').firstChild) $('#lobbyArt').innerHTML = FX.sceneArt('tavern');
+    const adv = v.adventure;
+    if (S.lobbyArt !== adv.art) { S.lobbyArt = adv.art; const la = $('#lobbyArt'); la.innerHTML = FX.sceneArt(adv.art); la.classList.remove('entering'); void la.offsetWidth; la.classList.add('entering'); }
     ambient($('#lobbyEmbers'), 'embers');
-    $('#advTitle').textContent = v.adventure.title;
-    $('#advSummary').textContent = v.adventure.summary;
+    $('#advTitle').textContent = adv.title;
+    $('#advSummary').textContent = adv.summary;
+    $('#advEyebrow').textContent = ['Para 1–4 jugadores · niveles 1 a 3', adv.length, adv.endings > 1 ? `${adv.endings} finales` : ''].filter(Boolean).join(' · ');
+    const hostNow = v.you && v.you.isHost;
+    if (setHTML($('#advList'), v.adventures.map((a) => `<button class="adv-card ${a.id === adv.id ? 'active' : ''}" data-adv="${a.id}" ${hostNow ? '' : 'disabled'} aria-pressed="${a.id === adv.id}">
+        <span class="adv-art" data-art="${a.art}"></span>
+        <span class="adv-body"><b>${esc(a.title)}</b><span class="adv-tags">${a.tags.map((t) => `<i>${esc(t)}</i>`).join('')}</span><small>${esc(a.length)}${a.endings > 1 ? ` · ${a.endings} finales` : ''}</small></span>
+        ${a.id === adv.id ? '<span class="adv-check">✔</span>' : ''}
+      </button>`).join(''))) {
+      $$('.adv-art', $('#advList')).forEach((el) => (el.innerHTML = FX.sceneArt(el.dataset.art)));
+      $$('[data-adv]', $('#advList')).forEach((b) => (b.onclick = () => send({ type: 'adventure', id: b.dataset.adv })));
+    }
+    $('#createCharBtn').onclick = () => openCreator();
+    $('#randomCharBtn').onclick = () => send({ type: 'create', spec: 'random' });
     if (setHTML($('#catalog'), v.catalog.map((c) => charCard(c, v)).join(''))) bindCharButtons($('#catalog'));
     setHTML($('#playersList'), v.players.map((p) => {
       const c = p.charId && v.catalog.find((x) => x.id === p.charId);
@@ -242,8 +264,8 @@
     $('#startBtn').onclick = () => send({ type: 'start' });
     const host = v.players.find((p) => p.isHost);
     $('#startHint').textContent = isHost
-      ? (v.pcs.length ? `Comparte el código ${v.code} (o el enlace de invitación) y pulsa Comenzar cuando estéis listos. Los encuentros se ajustan al tamaño del grupo.` : 'Elige un personaje para empezar.')
-      : `Esperando a que ${host ? host.name : 'el anfitrión'} comience la aventura…`;
+      ? (v.pcs.length ? `Comparte el código ${v.code} (o el enlace de invitación) y pulsa Comenzar cuando estéis listos. Los encuentros se ajustan al tamaño del grupo.` : 'Elige o crea un personaje para empezar.')
+      : `Esperando a que ${host ? host.name : 'el anfitrión'} elija la aventura y la comience…`;
   }
 
   // ------------------------------------------------------------------ partida: grupo
@@ -309,6 +331,15 @@
       setHTML(el.children[4], pcTags(p));
     });
     for (const el of $$('.pc', list)) if (!keep.has(el.dataset.id)) el.remove();
+
+    // diario de pistas y decisiones
+    const jb = $('#journalBox');
+    jb.classList.toggle('hidden', !v.journal.length);
+    if (setHTML(jb, `<h3 class="col-title">📜 Diario</h3><ul>${v.journal.map((j, i) => `<li style="animation-delay:${Math.min(i, 6) * 0.04}s">${esc(j)}</li>`).join('')}</ul>`)) {
+      const last = jb.querySelector('li:last-child');
+      if (last && S.journalN !== undefined && v.journal.length > S.journalN) last.classList.add('new');
+    }
+    S.journalN = v.journal.length;
 
     // botín
     const mine = v.you && v.you.charId && v.pcs.some((p) => p.id === v.you.charId);
@@ -400,7 +431,7 @@
       let first = false;
       if (e.kind === 'scene') S.afterScene = true;
       else if (e.kind === 'narration' && S.afterScene && !e.title) { first = true; S.afterScene = false; }
-      d.className = `entry k-${e.kind} ${e.title ? 'title' : ''} ${res} ${e.crit ? 'crit' : ''} ${first ? 'first' : ''}`;
+      d.className = `entry k-${e.kind} ${e.title ? 'title' : ''} ${res} ${e.crit ? 'crit' : ''} ${first ? 'first' : ''} ${e.ending ? 'ending tone-' + e.ending : ''}`;
       d.textContent = e.text;
       box.appendChild(d);
     }
@@ -528,7 +559,7 @@
 
   function exitCard(e, myPc) {
     const votes = e.votes.length ? `<span class="votes">${e.votes.map((n) => `<span>${esc(n)}</span>`).join('')}</span>` : `<span class="meta">${e.enabled ? (e.fight ? 'Empieza el combate' : 'Votad para avanzar') : '🔒 Superad antes el obstáculo'}</span>`;
-    return `<button class="choice ${e.fight ? 'fight' : 'path'} ${e.myVote ? 'voted' : ''}" data-exit="${e.idx}" ${e.enabled && myPc ? '' : 'disabled'}><span class="ic">${e.fight ? '⚔️' : '🧭'}</span><span class="lbl">${esc(e.label)}</span>${votes}</button>`;
+    return `<button class="choice ${e.fight ? 'fight' : 'path'} ${e.myVote ? 'voted' : ''}" data-exit="${e.idx}" ${e.enabled && myPc ? '' : 'disabled'}><span class="ic">${e.fight ? '⚔️' : '🧭'}</span><span class="lbl">${esc(e.label)}</span>${e.hint ? `<span class="meta hint-line">💡 ${esc(e.hint)}</span>` : ''}${votes}</button>`;
   }
 
   function renderActionPanel(v) {
@@ -543,8 +574,11 @@
       html += `<h4>Estás mirando la partida</h4><div class="hint">Elige un personaje libre para unirte al grupo${v.combat ? ' cuando termine el combate' : ''}.</div><div class="shop">${free.map((c) => `<button class="btn small" data-pick="${c.id}" ${v.combat ? 'disabled' : ''}>${c.portrait} ${esc(c.name)}</button>`).join('') || '<span class="muted">No quedan personajes libres.</span>'}</div>`;
     }
     if (v.phase === 'ended') {
-      html += `<h4>🏆 Fin de la aventura</h4><div class="hint">¡Enhorabuena! Podéis repartir el botín y revisar vuestras fichas.</div>`;
-      if (v.you && v.you.isHost) html += `<div><button class="btn primary" data-restart>Empezar una nueva partida</button></div>`;
+      const en = v.scene && v.scene.ending;
+      if (en) html += `<div class="ending-card tone-${en.tone || 'good'}"><span class="eyebrow">${TONE[en.tone] || 'Final'}</span><h3>${esc(en.title)}</h3>${v.adventure.endings > 1 ? `<p>Has descubierto uno de los ${v.adventure.endings} finales de «${esc(v.adventure.title)}». Otras decisiones os habrían llevado a otro lugar.</p>` : ''}</div>`;
+      else html += `<h4>🏆 Fin de la aventura</h4>`;
+      html += `<div class="hint">Podéis repartir el botín y revisar vuestras fichas.</div>`;
+      if (v.you && v.you.isHost) html += `<div><button class="btn primary" data-restart>Volver a la sala y elegir aventura</button></div>`;
     } else if (v.combat) {
       const cb = v.combat;
       if (cb.actions.length) {
@@ -588,7 +622,7 @@
     $$('[data-exit]', panel).forEach((b) => (b.onclick = () => send({ type: 'vote', exit: +b.dataset.exit })));
     $$('[data-buy]', panel).forEach((b) => (b.onclick = () => send({ type: 'buy', item: b.dataset.buy })));
     $$('[data-rest]', panel).forEach((b) => (b.onclick = () => send({ type: 'rest' })));
-    $$('[data-restart]', panel).forEach((b) => (b.onclick = () => { if (confirm('¿Empezar de nuevo? Los personajes vuelven a nivel 1.')) send({ type: 'restart' }); }));
+    $$('[data-restart]', panel).forEach((b) => (b.onclick = () => { if (confirm('¿Volver a la sala? Podréis elegir otra aventura; los personajes vuelven a nivel 1.')) send({ type: 'restart' }); }));
     $$('[data-act]', panel).forEach((b) => {
       b.onclick = () => {
         const a = actionList.find((x) => x.key === b.dataset.act);
@@ -666,6 +700,7 @@
   const G_SECTIONS = [
     ['rules', 'Reglas básicas'], ['skills', 'Habilidades'], ['features', 'Rasgos y pasivas'], ['items', 'Objetos'],
     ['spells', 'Conjuros'], ['conditions', 'Condiciones'], ['monsters', 'Criaturas'],
+    ['races', 'Razas'], ['classes', 'Clases'], ['backgrounds', 'Trasfondos'],
   ];
   const gnorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const G = { tab: 'all', data: null };
@@ -701,19 +736,47 @@
     win.classList.toggle('hidden', !open);
     $('#glossaryBtn').setAttribute('aria-expanded', String(open));
     if (!open) return;
+    gwinRestore();
+    $('#glossaryMax').textContent = win.classList.contains('max') ? '🗗' : '⤢';
     if (!G.data) glossary().then((d) => { G.data = d; renderGlossary(); }).catch(() => { $('#glist').innerHTML = '<p class="error">No se pudo cargar el glosario.</p>'; });
     if (matchMedia('(min-width: 901px)').matches) $('#gq').focus();
   }
+  const GW_KEY = 'mesa:gwin';
+  function gwinSave() {
+    const win = $('#glossaryWin');
+    if (!matchMedia('(min-width: 901px)').matches || win.classList.contains('hidden')) return;
+    try { localStorage.setItem(GW_KEY, JSON.stringify({ max: win.classList.contains('max'), left: win.style.left, top: win.style.top, width: win.style.width || `${win.offsetWidth}px`, height: win.style.height || `${win.offsetHeight}px` })); } catch {}
+  }
+  function gwinRestore() {
+    const win = $('#glossaryWin');
+    if (!matchMedia('(min-width: 901px)').matches) return;
+    let st = null;
+    try { st = JSON.parse(localStorage.getItem(GW_KEY) || 'null'); } catch {}
+    if (!st) return;
+    win.classList.toggle('max', !!st.max);
+    const w = Math.min(parseInt(st.width, 10) || 560, innerWidth - 16), h = Math.min(parseInt(st.height, 10) || 600, innerHeight - 60);
+    Object.assign(win.style, { width: `${w}px`, height: `${h}px` });
+    if (st.left) Object.assign(win.style, { left: `${Math.max(0, Math.min(innerWidth - w, parseInt(st.left, 10)))}px`, top: `${Math.max(48, Math.min(innerHeight - 40, parseInt(st.top, 10)))}px`, right: 'auto' });
+  }
+  function gwinMax(on) {
+    const win = $('#glossaryWin');
+    win.classList.toggle('max', on ?? !win.classList.contains('max'));
+    $('#glossaryMax').textContent = win.classList.contains('max') ? '🗗' : '⤢';
+    gwinSave();
+  }
+  $('#glossaryMax').onclick = () => gwinMax();
+  $('#glossaryHead').addEventListener('dblclick', (e) => { if (!e.target.closest('button, a')) gwinMax(); });
+  if (window.ResizeObserver) { let t = 0; new ResizeObserver(() => { clearTimeout(t); t = setTimeout(gwinSave, 300); }).observe($('#glossaryWin')); }
   $('#glossaryBtn').onclick = () => toggleGlossary();
   $('#glossaryClose').onclick = () => toggleGlossary(false);
   $('#gq').addEventListener('input', renderGlossary);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#glossaryWin').classList.contains('hidden') && !$('#sheetDialog').open) toggleGlossary(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#glossaryWin').classList.contains('hidden') && !$('#sheetDialog').open && !$('#createDialog').open) toggleGlossary(false); });
   // arrastrar la ventana por su cabecera (solo escritorio)
   (() => {
     const win = $('#glossaryWin'), head = $('#glossaryHead');
     let drag = null;
     head.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button, a') || !matchMedia('(min-width: 901px)').matches) return;
+      if (e.target.closest('button, a') || !matchMedia('(min-width: 901px)').matches || win.classList.contains('max')) return;
       const r = win.getBoundingClientRect();
       drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
       head.setPointerCapture(e.pointerId);
@@ -724,10 +787,222 @@
       const y = Math.max(48, Math.min(innerHeight - 40, e.clientY - drag.dy));
       Object.assign(win.style, { left: `${x}px`, top: `${y}px`, right: 'auto' });
     });
-    const stop = () => { drag = null; };
+    const stop = () => { if (drag) gwinSave(); drag = null; };
     head.addEventListener('pointerup', stop);
     head.addEventListener('pointercancel', stop);
   })();
+
+
+  // ------------------------------------------------------------------ asistente de creación de personaje
+  const WZ = { data: null, step: 0, spec: null, busy: false };
+  const PORTRAITS = ['🧑', '👩', '👨', '🧔', '👱', '🧕', '👩‍🦰', '👨‍🦳', '🧝', '🧙', '🥷', '🛡️', '⚔️', '🏹', '🔮', '✨', '🗡️', '🐉', '😈', '⛏️', '🍀', '⚙️', '🌗', '🪓', '🦊', '🐺', '🌙', '🔥'];
+  const COLORS = ['#c0392b', '#d35400', '#b7950b', '#27ae60', '#16a085', '#2980b9', '#8e44ad', '#c2185b', '#7f8c8d', '#5d4037'];
+  const amod = (v) => Math.floor((v - 10) / 2);
+  async function creationData() {
+    if (!WZ.data) WZ.data = await fetch('/api/creation').then((r) => r.json());
+    return WZ.data;
+  }
+  const wRace = () => WZ.data.races.find((r) => r.id === WZ.spec.race);
+  const wCls = () => WZ.data.classes.find((c) => c.id === WZ.spec.cls);
+  const wBg = () => WZ.data.backgrounds.find((b) => b.id === WZ.spec.background);
+  const skillName = (id) => (WZ.data.skills.find((s) => s.id === id) || {}).name || id;
+  const abilShort = (id) => ABIL[id];
+  function wSteps() {
+    const r = WZ.spec.race && wRace(), c = WZ.spec.cls && wCls();
+    const magic = (c && c.spells) || (r && r.cantrip);
+    return [['race', 'Raza'], ['class', 'Clase'], ['abil', 'Características'], ['skills', 'Trasfondo y habilidades'], ...(magic ? [['magic', 'Magia']] : []), ['gear', 'Equipo'], ['details', 'Detalles'], ['summary', 'Resumen']];
+  }
+  function wFixedSkills() {
+    const r = wRace(), b = WZ.spec.background ? wBg() : null;
+    return [...new Set([...(r ? r.skills : []), ...(b ? b.skills : [])])];
+  }
+  function wAnyCount() {
+    const r = wRace(), b = WZ.spec.background ? wBg() : null;
+    if (!r) return 0;
+    return (r.extraSkills || 0) + (b ? r.skills.filter((x) => b.skills.includes(x)).length : 0);
+  }
+  function wFinal() {
+    const r = wRace();
+    const out = { ...WZ.spec.base };
+    if (r) { for (const [k, v] of Object.entries(r.bonus)) out[k] += v; for (const k of WZ.spec.plus1 || []) out[k] += 1; }
+    return out;
+  }
+  function wPoints() { return Object.values(WZ.spec.base).reduce((a, v) => a + (WZ.data.pointCost[v] ?? 99), 0); }
+  /** Problema que impide avanzar desde un paso (o null) */
+  function wProblem(step) {
+    const s = WZ.spec, r = s.race && wRace(), c = s.cls && wCls();
+    switch (step) {
+      case 'race': return !r ? 'Elige una raza.' : r.ancestry && !s.ancestry ? 'Elige tu linaje dracónico.' : null;
+      case 'class': return !c ? 'Elige una clase.' : null;
+      case 'abil':
+        if (s.method === 'array' && Object.values(s.base).sort((a, b) => a - b).join() !== WZ.data.stdArray.join()) return 'Usa cada valor de la serie estándar una vez.';
+        if (s.method === 'points' && wPoints() > 27) return `Te has pasado de puntos (${wPoints()} de 27).`;
+        if (r.plus1 && (s.plus1 || []).length !== r.plus1) return `Elige ${r.plus1} características para el +1.`;
+        return null;
+      case 'skills':
+        if (!s.background) return 'Elige un trasfondo.';
+        if (s.skills.length !== c.skillChoices) return `Elige ${c.skillChoices} habilidades de clase.`;
+        if (s.anySkills.length !== wAnyCount()) return `Elige ${wAnyCount()} habilidades libres.`;
+        if (c.expertise && s.expertise.length !== c.expertise) return `Elige ${c.expertise} habilidades de pericia.`;
+        return null;
+      case 'magic':
+        if (c.spells && s.cantrips.length !== c.spells.cantrips.count) return `Elige ${c.spells.cantrips.count} trucos.`;
+        if (c.spells && s.spells.length !== c.spells.level1.count) return `Elige ${c.spells.level1.count} conjuros de nivel 1.`;
+        if (r.cantrip && !s.elfCantrip) return 'Elige tu truco de alto elfo.';
+        return null;
+      case 'gear': return !s.kit ? 'Elige tu equipo.' : c.styles && !s.style ? 'Elige un estilo de combate.' : null;
+      case 'details': return s.name.trim().length < 2 ? 'Ponle un nombre a tu personaje.' : null;
+      default: return null;
+    }
+  }
+  const chip = (on, attrs, html, disabled = false) => `<button type="button" class="wchip ${on ? 'on' : ''}" ${attrs} ${disabled ? 'disabled' : ''}>${html}</button>`;
+  function pickToggle(list, id, max) {
+    const i = list.indexOf(id);
+    if (i >= 0) list.splice(i, 1);
+    else { if (list.length >= max) list.shift(); list.push(id); }
+  }
+  function wRender() {
+    const d = WZ.data, s = WZ.spec;
+    const steps = wSteps();
+    WZ.step = Math.min(WZ.step, steps.length - 1);
+    const [key, title] = steps[WZ.step];
+    const r = s.race && wRace(), c = s.cls && wCls();
+    $('#wzSteps').innerHTML = steps.map(([k, t], i) => `<button type="button" class="${i === WZ.step ? 'active' : ''} ${i < WZ.step ? 'done' : ''}" data-wstep="${i}" ${i > WZ.step && steps.slice(0, i).some(([kk]) => wProblem(kk)) ? 'disabled' : ''}><b>${i + 1}</b><span>${t}</span></button>`).join('');
+    let h = `<h3>${title}</h3>`;
+    if (key === 'race') {
+      h += `<div class="wgrid">${d.races.map((x) => `<button type="button" class="wcard ${s.race === x.id ? 'on' : ''}" data-race="${x.id}"><span class="wic">${x.icon}</span><b>${esc(s.gender === 'f' ? x.fem : x.name)}</b><span class="wtags">${Object.entries(x.bonus).map(([k, v]) => `<i>${abilShort(k)} +${v}</i>`).join('')}${x.plus1 ? `<i>+1 a ${x.plus1} a elegir</i>` : ''}</span><small>${esc(x.desc)}</small></button>`).join('')}</div>`;
+      if (r) h += `<div class="wnote"><b>Rasgos:</b> ${r.features.map((f) => `<span class="wfeat" title="${esc(f.desc)}">${esc(f.name)}</span>`).join(' ')}</div>`;
+      if (r && r.ancestry) h += `<h4>Linaje dracónico</h4><div class="wchips">${d.ancestries.map((a) => chip(s.ancestry === a.id, `data-anc="${a.id}"`, `${esc(a.name)} <small>${esc(a.type)} · ${a.shape === 'line' ? 'línea' : 'cono'}</small>`)).join('')}</div>`;
+    } else if (key === 'class') {
+      h += `<div class="wgrid">${d.classes.map((x) => `<button type="button" class="wcard ${s.cls === x.id ? 'on' : ''}" data-cls="${x.id}"><span class="wic">${x.icon}</span><b>${esc(s.gender === 'f' ? x.fem : x.name)}</b><span class="wtags"><i>d${x.hitDie} PG</i><i>Salv.: ${x.saves.map(abilShort).join(', ')}</i></span><small>${esc(x.desc)}</small>${statBars(x.stats)}</button>`).join('')}</div>`;
+      if (c) h += `<div class="wnote"><b>${esc(c.subclass)}.</b> ${c.features.map((f) => `<span class="wfeat" title="${esc(f.desc)}">Nv ${f.level}: ${esc(f.name)}</span>`).join(' ')}</div>`;
+    } else if (key === 'abil') {
+      const fin = wFinal();
+      h += `<div class="wseg">${chip(s.method === 'array', 'data-method="array"', 'Serie estándar (15, 14, 13, 12, 10, 8)')}${chip(s.method === 'points', 'data-method="points"', 'Compra de puntos (27)')}<button type="button" class="btn small ghost" data-recommend>Usar la recomendada para ${esc(c.name.toLowerCase())}</button></div>`;
+      if (s.method === 'points') h += `<p class="wpoints ${wPoints() > 27 ? 'bad' : ''}">Puntos gastados: <b>${wPoints()}</b> de 27</p>`;
+      h += `<div class="wabil">${d.abilities.map((a) => {
+        const bonus = (r.bonus[a.id] || 0) + ((s.plus1 || []).includes(a.id) ? 1 : 0);
+        const ctrl = s.method === 'array'
+          ? `<select data-arr="${a.id}">${d.stdArray.slice().reverse().map((v) => `<option ${s.base[a.id] === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`
+          : `<span class="wpm"><button type="button" class="btn small" data-pm="${a.id}:-1" ${s.base[a.id] <= 8 ? 'disabled' : ''}>−</button><b>${s.base[a.id]}</b><button type="button" class="btn small" data-pm="${a.id}:1" ${s.base[a.id] >= 15 ? 'disabled' : ''}>+</button></span>`;
+        return `<div class="wab ${c.saves.includes(a.id) ? 'save' : ''}"><span class="wabn">${esc(a.name)}${c.recommended && Object.entries(c.recommended).sort((x, y) => y[1] - x[1])[0][0] === a.id ? ' ★' : ''}</span>${ctrl}<span class="wbonus">${bonus ? '+' + bonus : ''}</span><span class="wfin">${fin[a.id]}<small>${fmt(amod(fin[a.id]))}</small></span></div>`;
+      }).join('')}</div>`;
+      if (r.plus1) h += `<h4>+1 a ${r.plus1} características (${esc(r.name)})</h4><div class="wchips">${d.abilities.filter((a) => !r.bonus[a.id]).map((a) => chip((s.plus1 || []).includes(a.id), `data-plus1="${a.id}"`, esc(a.name))).join('')}</div>`;
+      h += `<p class="muted small">★ característica principal de la clase. Las marcadas en dorado son tus salvaciones competentes.</p>`;
+    } else if (key === 'skills') {
+      h += `<div class="wgrid small">${d.backgrounds.map((b) => `<button type="button" class="wcard ${s.background === b.id ? 'on' : ''}" data-bg="${b.id}"><b>${esc(b.name)}</b><span class="wtags">${b.skills.map((k) => `<i>${esc(skillName(k))}</i>`).join('')}</span><small>${esc(b.desc)} Equipo: ${esc(b.items.join(', '))}.</small></button>`).join('')}</div>`;
+      const fixed = wFixedSkills();
+      h += `<h4>Ya tienes</h4><div class="wchips">${fixed.map((k) => chip(true, 'disabled', '🔒 ' + esc(skillName(k)))).join('') || '<span class="muted small">Elige un trasfondo.</span>'}</div>`;
+      h += `<h4>Habilidades de ${esc(c.name.toLowerCase())}: elige ${c.skillChoices} (${s.skills.length}/${c.skillChoices})</h4><div class="wchips">${c.skillList.map((k) => chip(s.skills.includes(k), `data-sk="${k}"`, esc(skillName(k)), fixed.includes(k))).join('')}</div>`;
+      const any = wAnyCount();
+      if (any) h += `<h4>Habilidades libres: elige ${any} (${s.anySkills.length}/${any})</h4><div class="wchips">${d.skills.map((k) => chip(s.anySkills.includes(k.id), `data-any="${k.id}"`, esc(k.name), fixed.includes(k.id) || s.skills.includes(k.id))).join('')}</div>`;
+      if (c.expertise) {
+        const prof = [...fixed, ...s.skills, ...s.anySkills];
+        h += `<h4>Pericia: elige ${c.expertise} (doble competencia) (${s.expertise.length}/${c.expertise})</h4><div class="wchips">${prof.map((k) => chip(s.expertise.includes(k), `data-exp="${k}"`, esc(skillName(k)))).join('')}</div>`;
+      }
+    } else if (key === 'magic') {
+      const spellChip = (sp, list, attr) => chip(list.includes(sp.id), `data-${attr}="${sp.id}" title="${esc(sp.desc)}"`, esc(sp.name));
+      if (c.spells) {
+        h += `<h4>Trucos: elige ${c.spells.cantrips.count} (${s.cantrips.length}/${c.spells.cantrips.count})</h4><div class="wchips">${c.spells.cantrips.from.map((sp) => spellChip(sp, s.cantrips, 'can')).join('')}</div>`;
+        h += `<h4>Conjuros de nivel 1: elige ${c.spells.level1.count} (${s.spells.length}/${c.spells.level1.count})</h4><div class="wchips">${c.spells.level1.from.map((sp) => spellChip(sp, s.spells, 'sp1')).join('')}</div>`;
+        if (c.spells.level1.always.length) h += `<p class="muted small">Siempre preparados: ${c.spells.level1.always.map((x) => esc(x.name)).join(', ')}.</p>`;
+      }
+      if (r.cantrip) h += `<h4>Truco de alto elfo (usa Inteligencia)</h4><div class="wchips">${d.wizardCantrips.map((sp) => chip(s.elfCantrip === sp.id, `data-elf="${sp.id}" title="${esc(sp.desc)}"`, esc(sp.name), c.id === 'wizard' && s.cantrips.includes(sp.id))).join('')}</div>`;
+      h += `<div class="wnote" id="wzSpellDesc">Pasa el ratón por un conjuro para ver qué hace.</div>`;
+    } else if (key === 'gear') {
+      h += `<div class="wgrid small">${c.kits.map((k) => `<button type="button" class="wcard ${s.kit === k.id ? 'on' : ''}" data-kit="${k.id}"><b>${esc(k.name)}</b><small>${esc(k.desc)}</small></button>`).join('')}</div>`;
+      if (c.styles) h += `<h4>Estilo de combate</h4><div class="wgrid small">${c.styles.map((st) => `<button type="button" class="wcard ${s.style === st.id ? 'on' : ''}" data-style="${st.id}"><b>${esc(st.name)}</b><small>${esc(st.desc)}</small></button>`).join('')}</div>`;
+    } else if (key === 'details') {
+      h += `<div class="wform"><label>Nombre <input id="wzName" maxlength="28" value="${esc(s.name)}" placeholder="p. ej. Alma Brasaviva"></label>
+        <div class="wseg">${chip(s.gender === 'f', 'data-gender="f"', 'Femenino')}${chip(s.gender === 'm', 'data-gender="m"', 'Masculino')}</div>
+        <h4>Retrato</h4><div class="wchips portraits">${PORTRAITS.map((p) => chip(s.portrait === p, `data-por="${p}"`, p)).join('')}</div>
+        <h4>Color</h4><div class="wchips">${COLORS.map((col) => `<button type="button" class="wcolor ${s.color === col ? 'on' : ''}" data-col="${col}" style="--c:${col}" aria-label="Color ${col}"></button>`).join('')}</div>
+        <label>Historia (opcional) <textarea id="wzBio" maxlength="400" rows="3" placeholder="¿De dónde vienes? ¿Qué buscas?">${esc(s.bio)}</textarea></label></div>`;
+    } else if (key === 'summary') {
+      const fin = wFinal();
+      const hp = c.hitDie + amod(fin.con) + (s.race === 'dwarf' ? 1 : 0);
+      const kit = c.kits.find((k) => k.id === s.kit);
+      const allSkills = [...wFixedSkills(), ...s.skills, ...s.anySkills];
+      const spellNames = (ids, list) => ids.map((id) => (list.find((x) => x.id === id) || {}).name).filter(Boolean);
+      h += `<div class="wsum" style="--c:${s.color}"><span class="medallion">${esc(s.portrait || r.icon)}</span><div><h3>${esc(s.name)}</h3><div class="sub">${esc(s.gender === 'f' ? r.fem : r.name)}${s.ancestry ? ` (linaje ${esc(d.ancestries.find((a) => a.id === s.ancestry).name.toLowerCase())})` : ''} · ${esc(s.gender === 'f' ? c.fem : c.name)} 1 · ${esc(wBg().name)}</div></div></div>
+        <div class="wabil sum">${d.abilities.map((a) => `<div class="wab"><span class="wabn">${a.short || ABIL[a.id]}</span><span class="wfin">${fin[a.id]}<small>${fmt(amod(fin[a.id]))}</small></span></div>`).join('')}</div>
+        <ul class="wlist"><li><b>Puntos de golpe:</b> ${hp}</li><li><b>Equipo:</b> ${esc(kit.desc)}${c.styles ? ` · Estilo: ${esc(c.styles.find((x) => x.id === s.style).name)}` : ''}</li>
+        <li><b>Habilidades:</b> ${allSkills.map((k) => esc(skillName(k)) + (s.expertise.includes(k) ? ' (pericia)' : '')).join(', ')}</li>
+        ${c.spells ? `<li><b>Trucos:</b> ${spellNames(s.cantrips, c.spells.cantrips.from).join(', ')}</li><li><b>Conjuros:</b> ${[...c.spells.level1.always.map((x) => x.name), ...spellNames(s.spells, c.spells.level1.from)].join(', ')}</li>` : ''}
+        ${r.cantrip ? `<li><b>Truco de alto elfo:</b> ${esc((d.wizardCantrips.find((x) => x.id === s.elfCantrip) || {}).name || '')}</li>` : ''}
+        <li><b>Rasgos:</b> ${[...r.features, ...c.features.filter((f) => f.level === 1)].map((f) => esc(f.name)).join(', ')}</li></ul>`;
+    }
+    const prob = wProblem(key);
+    h += `<p class="wprob">${prob ? '⚠️ ' + esc(prob) : ''}</p>`;
+    setHTML($('#wzBody'), h);
+    $('#wzBack').disabled = WZ.step === 0;
+    $('#wzNext').classList.toggle('hidden', key === 'summary');
+    $('#wzCreate').classList.toggle('hidden', key !== 'summary');
+    $('#wzNext').disabled = !!prob;
+    $('#wzCreate').disabled = WZ.busy;
+    wBind();
+  }
+  function wSet(fn) { fn(WZ.spec); wRender(); }
+  function wResetForClass() {
+    const c = wCls();
+    Object.assign(WZ.spec, { kit: null, style: null, skills: [], expertise: [], cantrips: [], spells: [], method: 'array' });
+    WZ.spec.base = { ...c.recommended };
+  }
+  function wBind() {
+    const b = $('#wzBody'), s = WZ.spec;
+    const on = (sel, fn) => $$(sel, b).forEach((el) => (el.onclick = () => fn(el)));
+    $$('[data-wstep]', $('#wzSteps')).forEach((el) => (el.onclick = () => { WZ.step = +el.dataset.wstep; wRender(); }));
+    on('[data-race]', (el) => wSet(() => { s.race = el.dataset.race; s.plus1 = []; s.anySkills = []; s.ancestry = null; s.elfCantrip = null; if (!s._por) s.portrait = wRace().icon; }));
+    on('[data-anc]', (el) => wSet(() => { s.ancestry = el.dataset.anc; }));
+    on('[data-cls]', (el) => wSet(() => { if (s.cls !== el.dataset.cls) { s.cls = el.dataset.cls; wResetForClass(); } }));
+    on('[data-method]', (el) => wSet(() => { s.method = el.dataset.method; if (s.method === 'array') s.base = { ...wCls().recommended }; else for (const k of Object.keys(s.base)) s.base[k] = Math.min(15, Math.max(8, s.base[k])); }));
+    on('[data-recommend]', () => wSet(() => { s.method = 'array'; s.base = { ...wCls().recommended }; }));
+    $$('[data-arr]', b).forEach((el) => (el.onchange = () => wSet(() => {
+      const k = el.dataset.arr, v = +el.value;
+      const other = Object.keys(s.base).find((x) => x !== k && s.base[x] === v);
+      if (other) s.base[other] = s.base[k];
+      s.base[k] = v;
+    })));
+    on('[data-pm]', (el) => wSet(() => { const [k, dlt] = el.dataset.pm.split(':'); s.base[k] = Math.max(8, Math.min(15, s.base[k] + +dlt)); }));
+    on('[data-plus1]', (el) => wSet(() => pickToggle(s.plus1, el.dataset.plus1, wRace().plus1)));
+    on('[data-bg]', (el) => wSet(() => { s.background = el.dataset.bg; const fixed = wFixedSkills(); s.skills = s.skills.filter((x) => !fixed.includes(x)); s.anySkills = []; s.expertise = []; }));
+    on('[data-sk]', (el) => wSet(() => { pickToggle(s.skills, el.dataset.sk, wCls().skillChoices); s.anySkills = s.anySkills.filter((x) => !s.skills.includes(x)); s.expertise = s.expertise.filter((x) => [...wFixedSkills(), ...s.skills, ...s.anySkills].includes(x)); }));
+    on('[data-any]', (el) => wSet(() => { pickToggle(s.anySkills, el.dataset.any, wAnyCount()); s.expertise = s.expertise.filter((x) => [...wFixedSkills(), ...s.skills, ...s.anySkills].includes(x)); }));
+    on('[data-exp]', (el) => wSet(() => pickToggle(s.expertise, el.dataset.exp, wCls().expertise)));
+    on('[data-can]', (el) => wSet(() => { pickToggle(s.cantrips, el.dataset.can, wCls().spells.cantrips.count); if (s.cls === 'wizard' && s.cantrips.includes(s.elfCantrip)) s.elfCantrip = null; }));
+    on('[data-sp1]', (el) => wSet(() => pickToggle(s.spells, el.dataset.sp1, wCls().spells.level1.count)));
+    on('[data-elf]', (el) => wSet(() => { s.elfCantrip = el.dataset.elf; }));
+    $$('[data-can], [data-sp1], [data-elf]', b).forEach((el) => (el.onmouseenter = el.onfocus = () => { const dd = $('#wzSpellDesc'); if (dd) dd.innerHTML = `<b>${esc(el.textContent)}</b> · ${esc(el.title)}`; }));
+    on('[data-kit]', (el) => wSet(() => { s.kit = el.dataset.kit; if (s.kit === 'arquero' && !s.style) s.style = 'archery'; }));
+    on('[data-style]', (el) => wSet(() => { s.style = el.dataset.style; }));
+    on('[data-gender]', (el) => wSet(() => { s.gender = el.dataset.gender; }));
+    on('[data-por]', (el) => wSet(() => { s.portrait = el.dataset.por; s._por = true; }));
+    on('[data-col]', (el) => wSet(() => { s.color = el.dataset.col; }));
+    const name = $('#wzName', b);
+    if (name) name.oninput = () => { s.name = name.value; const p = wProblem('details'); $('#wzNext').disabled = !!p; $('.wprob', b).textContent = p ? '⚠️ ' + p : ''; };
+    const bio = $('#wzBio', b);
+    if (bio) bio.oninput = () => { s.bio = bio.value; };
+  }
+  async function openCreator() {
+    try { await creationData(); } catch { toast('No se pudieron cargar las opciones de creación'); return; }
+    WZ.spec = { name: '', gender: 'f', race: null, cls: null, background: null, kit: null, style: null, ancestry: null, method: 'array', base: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, plus1: [], skills: [], anySkills: [], expertise: [], cantrips: [], spells: [], elfCantrip: null, portrait: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], bio: '' };
+    WZ.step = 0; WZ.busy = false;
+    $('#wzBody')._html = null;
+    wRender();
+    $('#createDialog').showModal();
+    $('#wzBody').scrollTop = 0;
+  }
+  $('#wzBack').onclick = () => { WZ.step = Math.max(0, WZ.step - 1); wRender(); $('#wzBody').scrollTop = 0; };
+  $('#wzNext').onclick = () => { const key = wSteps()[WZ.step][0]; if (wProblem(key)) return; WZ.step += 1; wRender(); $('#wzBody').scrollTop = 0; };
+  $('#wzCreate').onclick = async () => {
+    WZ.busy = true; $('#wzCreate').disabled = true;
+    const s = WZ.spec;
+    const { _por, ...rest } = s;
+    const spec = { ...rest, name: s.name.trim(), style: s.style || undefined, ancestry: s.ancestry || undefined, plus1: s.plus1.length ? s.plus1 : undefined };
+    const ok = await send({ type: 'create', spec });
+    WZ.busy = false; $('#wzCreate').disabled = false;
+    if (ok) { $('#createDialog').close(); toast(`¡${s.name.trim()} se une a la mesa!`, true); }
+  };
 
   // ------------------------------------------------------------------ pestañas móviles
   $$('.mobile-tabs button').forEach((b) => (b.onclick = () => {

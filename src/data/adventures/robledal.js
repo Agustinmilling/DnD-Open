@@ -16,6 +16,20 @@ module.exports = {
   id: 'robledal',
   title: 'La Sombra bajo Robledal',
   summary: 'Los mineros de Robledal han desaparecido cerca del viejo santuario enano. Algo se esconde bajo la colina, y no son solo goblins.',
+  art: 'lair',
+  length: '1-2 horas',
+  tags: ['Mazmorra', 'Goblins', 'Muertos vivientes', 'Para empezar'],
+  endingCount: 1,
+  journal: {
+    knowsUndead: 'Bajo el santuario enano podría haber muertos vivientes.',
+    knowsTraps: 'La entrada del santuario tiene trampas de dardos en el suelo.',
+    knowsToll: 'Los goblins cobran peaje en el camino viejo; por el río se evita, pero hay lobos.',
+    knowsVarga: 'Un osgo llamado Varga manda a los goblins.',
+    snikFriend: 'Snik, el goblin del cepo, os debe la vida.',
+    knowsSecret: 'Hay un pasadizo secreto tras la estatua del enano barbudo.',
+    blessedAltar: 'El altar del yunque os ha bendecido.',
+    minersFreed: 'Habéis liberado a los mineros.',
+  },
   start: 'posada',
   startGold: 25, // po por personaje
   scenes: {

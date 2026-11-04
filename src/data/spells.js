@@ -38,6 +38,21 @@ module.exports = {
     desc: 'Aparece una mano espectral flotante que puedes usar para manipular objetos, abrir puertas o recipientes, o verter el contenido de un vial. No puede atacar, activar objetos mágicos ni cargar más de 10 libras.',
     kind: 'utility',
   },
+  thaumaturgy: {
+    name: 'Taumaturgia', level: 0, school: 'Transmutación', classes: ['Clérigo'], time: 'action', range: '30 pies', components: 'V', duration: 'Hasta 1 minuto',
+    desc: 'Manifiestas una pequeña maravilla: tu voz retumba con el triple de fuerza, las llamas parpadean, la tierra tiembla levemente o las puertas se abren de golpe.',
+    kind: 'utility', explore: true, target: 'self',
+  },
+  shocking_grasp: {
+    name: 'Agarre electrizante', level: 0, school: 'Evocación', classes: ['Mago'], time: 'action', range: 'Toque', components: 'V, S', duration: 'Instantánea',
+    desc: 'Un relámpago salta de tu mano. Haz un ataque de conjuro cuerpo a cuerpo (con ventaja si el objetivo lleva armadura metálica): si impacta, sufre 1d8 de daño de relámpago y no puede usar reacciones hasta el inicio de su siguiente turno.',
+    kind: 'attack', damage: '1d8', dmgType: 'relámpago', target: 'enemy', combat: true, melee: true,
+  },
+  chill_touch: {
+    name: 'Toque helado', level: 0, school: 'Nigromancia', classes: ['Mago'], time: 'action', range: '120 pies', components: 'V, S', duration: '1 asalto',
+    desc: 'Una mano espectral y esquelética aferra a una criatura. Haz un ataque de conjuro a distancia: si impacta, sufre 1d8 de daño necrótico y no puede recuperar puntos de golpe hasta el inicio de tu siguiente turno.',
+    kind: 'attack', damage: '1d8', dmgType: 'necrótico', target: 'enemy', combat: true,
+  },
   // ---------- Nivel 1 ----------
   magic_missile: {
     name: 'Proyectil mágico', level: 1, school: 'Evocación', classes: ['Mago'], time: 'action', range: '120 pies', components: 'V, S', duration: 'Instantánea',
@@ -68,6 +83,16 @@ module.exports = {
     name: 'Detectar magia', level: 1, school: 'Adivinación', classes: ['Clérigo', 'Mago'], time: 'action', range: 'Personal', components: 'V, S', duration: 'Concentración, hasta 10 minutos', ritual: true,
     desc: 'Mientras dure, percibes la presencia de magia a 30 pies de ti y puedes ver un aura tenue alrededor de cualquier criatura u objeto mágico visible, además de su escuela de magia, si la tiene.',
     kind: 'utility',
+  },
+  thunderwave: {
+    name: 'Onda atronadora', level: 1, school: 'Evocación', classes: ['Mago'], time: 'action', range: 'Personal (cubo de 15 pies)', components: 'V, S', duration: 'Instantánea',
+    desc: 'Una ola de fuerza atronadora sale de ti. Cada criatura en un cubo de 15 pies hace una salvación de Constitución: sufre 2d8 de daño de trueno y es empujada 10 pies si falla, o la mitad del daño si la supera. A niveles superiores: +1d8 por nivel.',
+    kind: 'save', save: 'con', damage: '2d8', upcast: '1d8', dmgType: 'trueno', half: true, target: 'enemies3', combat: true,
+  },
+  inflict_wounds: {
+    name: 'Infligir heridas', level: 1, school: 'Nigromancia', classes: ['Clérigo'], time: 'action', range: 'Toque', components: 'V, S', duration: 'Instantánea',
+    desc: 'Haz un ataque de conjuro cuerpo a cuerpo contra una criatura a tu alcance. Si impacta, sufre 3d10 de daño necrótico. A niveles superiores: +1d10 por nivel.',
+    kind: 'attack', damage: '3d10', upcast: '1d10', dmgType: 'necrótico', target: 'enemy', combat: true, melee: true,
   },
   cure_wounds: {
     name: 'Curar heridas', level: 1, school: 'Evocación', classes: ['Clérigo'], time: 'action', range: 'Toque', components: 'V, S', duration: 'Instantánea',
@@ -109,6 +134,16 @@ module.exports = {
     name: 'Inmovilizar persona', level: 2, school: 'Encantamiento', classes: ['Clérigo', 'Mago'], time: 'action', range: '60 pies', components: 'V, S, M', duration: 'Concentración, hasta 1 minuto', conc: true,
     desc: 'Elige un humanoide que puedas ver. Debe superar una salvación de Sabiduría o quedar paralizado mientras dure el conjuro. Al final de cada uno de sus turnos repite la salvación y, si la supera, el conjuro termina.',
     kind: 'save', save: 'wis', applies: 'paralyzed', onlyType: 'humanoide', target: 'enemy', combat: true, rounds: 10, saveEnds: true,
+  },
+  shatter: {
+    name: 'Romper', level: 2, school: 'Evocación', classes: ['Mago'], time: 'action', range: '60 pies', components: 'V, S, M', duration: 'Instantánea',
+    desc: 'Un estallido de sonido doloroso brota en un punto. Cada criatura en una esfera de 10 pies hace una salvación de Constitución: sufre 3d8 de daño de trueno si falla, o la mitad si la supera. A niveles superiores: +1d8 por nivel.',
+    kind: 'save', save: 'con', damage: '3d8', upcast: '1d8', dmgType: 'trueno', half: true, target: 'enemies3', combat: true,
+  },
+  aid: {
+    name: 'Ayuda', level: 2, school: 'Abjuración', classes: ['Clérigo'], time: 'action', range: '30 pies', components: 'V, S, M', duration: '8 horas',
+    desc: 'Tu conjuro refuerza a tus aliados. Hasta tres criaturas ven aumentados en 5 sus puntos de golpe máximos y actuales mientras dure. (Aquí: 5 puntos de golpe temporales a hasta tres aliados).',
+    kind: 'special', target: 'allies', maxTargets: 3, combat: true, explore: true,
   },
   spiritual_weapon: {
     name: 'Arma espiritual', level: 2, school: 'Evocación', classes: ['Clérigo'], time: 'bonus', range: '60 pies', components: 'V, S', duration: '1 minuto',

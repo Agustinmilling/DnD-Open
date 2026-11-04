@@ -1,6 +1,6 @@
 {
   "name": "mesa-de-dados",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prototipo de plataforma web multijugador para jugar con las reglas de 5ª edición (SRD 5.1).",
   "main": "server.js",
   "type": "commonjs",

@@ -31,7 +31,7 @@
         <svg viewBox="0 0 100 100"><polygon points="50,4 92,28 92,72 50,96 8,72 8,28" /><polygon points="50,22 78,70 22,70" /><text x="50" y="62" text-anchor="middle">20</text></svg>
       </div>
       <h1>Mesa de Dados</h1>
-      <p class="lead">Reúne a tu grupo, elige un héroe y adentraos en la oscuridad bajo Robledal. Dados, combate por turnos, decisiones que importan y subida de nivel, con las reglas de 5ª edición.</p>
+      <p class="lead">Reúne a tu grupo, crea tu héroe y elegid una aventura: criptas bajo Robledal, faros apagados en la costa o intrigas en la ciudad de Velacruz. Dados, combate por turnos, decisiones que cambian la historia y varios finales, con las reglas de 5ª edición.</p>
       <label for="nameInput">Tu nombre</label>
       <input id="nameInput" maxlength="24" placeholder="p. ej. Agustín" autocomplete="nickname">
       <button id="createBtn" class="btn primary big">Crear sala nueva</button>
@@ -51,12 +51,18 @@
         <div id="lobbyArt" class="hero-art"></div>
         <canvas id="lobbyEmbers" class="ambient-canvas" aria-hidden="true"></canvas>
         <div class="hero-text">
-          <span class="eyebrow">Aventura para 1–4 jugadores · niveles 1 a 3</span>
+          <span class="eyebrow" id="advEyebrow">Aventura para 1–4 jugadores · niveles 1 a 3</span>
           <h2 id="advTitle"></h2>
           <p id="advSummary"></p>
         </div>
       </div>
-      <h3 class="section-title">Elige tu héroe</h3>
+      <h3 class="section-title">Elige la aventura</h3>
+      <div id="advList" class="adv-list"></div>
+      <div class="title-row">
+        <h3 class="section-title">Elige tu héroe</h3>
+        <button id="createCharBtn" class="btn small primary">✚ Crear personaje</button>
+        <button id="randomCharBtn" class="btn small ghost" title="Crea un personaje al azar">🎲 Al azar</button>
+      </div>
       <div id="catalog" class="catalog"></div>
       <div class="lobby-actions">
         <div id="playersList" class="players"></div>
@@ -78,6 +84,7 @@
       <h3 class="col-title">El grupo</h3>
       <div id="partyList" class="party-list"></div>
       <div id="lootBox" class="loot"></div>
+      <div id="journalBox" class="journal hidden"></div>
     </aside>
     <section class="col story active" data-col="story">
       <div id="sceneBanner" class="scene-banner">
@@ -121,11 +128,28 @@
     <div id="sheetBody"></div>
   </dialog>
 
+  <!-- Asistente de creación de personaje -->
+  <dialog id="createDialog" class="create-dialog" aria-label="Crear personaje">
+    <header class="wz-head">
+      <b>✚ Crear personaje</b>
+      <form method="dialog"><button class="btn small ghost" aria-label="Cerrar">✕</button></form>
+    </header>
+    <nav id="wzSteps" class="wz-steps"></nav>
+    <div id="wzBody" class="wz-body"></div>
+    <footer class="wz-foot">
+      <button id="wzBack" class="btn" type="button">← Atrás</button>
+      <span class="muted small">Reglas del SRD 5.1: razas, clases y trasfondos.</span>
+      <button id="wzNext" class="btn primary" type="button">Siguiente →</button>
+      <button id="wzCreate" class="btn primary hidden" type="button">✔ Crear y jugar</button>
+    </footer>
+  </dialog>
+
   <!-- Glosario flotante (no bloquea la partida) -->
   <section id="glossaryWin" class="gwin hidden" role="dialog" aria-label="Glosario">
     <header class="gwin-head" id="glossaryHead">
       <b>📖 Glosario</b>
-      <span class="muted small gwin-hint">Arrástrala para moverla</span>
+      <span class="muted small gwin-hint">Arrástrala · doble clic para ampliar</span>
+      <button id="glossaryMax" class="btn small ghost" aria-label="Ampliar glosario" title="Ampliar / restaurar">⤢</button>
       <a href="/glosario" target="_blank" rel="noopener" class="btn small ghost" title="Abrir en una pestaña aparte">↗</a>
       <button id="glossaryClose" class="btn small ghost" aria-label="Cerrar glosario">✕</button>
     </header>

@@ -11,6 +11,10 @@ module.exports = {
   shortsword: { name: 'Espada corta', category: 'Arma marcial cuerpo a cuerpo', cost: '10 po', weight: '2 lb', dmg: '1d6', type: 'perforante', finesse: true, light: true, props: 'Sutil, ligera', desc: 'Hoja ágil, favorita de pícaros y duelistas.' },
   warhammer: { name: 'Martillo de guerra', category: 'Arma marcial cuerpo a cuerpo', cost: '15 po', weight: '2 lb', dmg: '1d8', type: 'contundente', props: 'Versátil (1d10)', desc: 'Martillo de combate. Muy eficaz contra esqueletos.' },
   scimitar: { name: 'Cimitarra', category: 'Arma marcial cuerpo a cuerpo', cost: '25 po', weight: '3 lb', dmg: '1d6', type: 'cortante', finesse: true, light: true, props: 'Sutil, ligera', desc: 'Hoja curva y ligera.' },
+  rapier: { name: 'Estoque', category: 'Arma marcial cuerpo a cuerpo', cost: '25 po', weight: '2 lb', dmg: '1d8', type: 'perforante', finesse: true, props: 'Sutil', desc: 'Hoja larga y fina, de duelista.' },
+  greatsword: { name: 'Mandoble', category: 'Arma marcial cuerpo a cuerpo', cost: '50 po', weight: '6 lb', dmg: '2d6', type: 'cortante', twoHanded: true, props: 'Pesada, a dos manos', desc: 'Espadón que se empuña con ambas manos.' },
+  greataxe: { name: 'Gran hacha', category: 'Arma marcial cuerpo a cuerpo', cost: '30 po', weight: '7 lb', dmg: '1d12', type: 'cortante', twoHanded: true, props: 'Pesada, a dos manos', desc: 'Hacha enorme de doble filo.' },
+  longbow: { name: 'Arco largo', category: 'Arma marcial a distancia', cost: '50 po', weight: '2 lb', dmg: '1d8', type: 'perforante', ranged: true, twoHanded: true, props: 'Munición (150/600), pesada, a dos manos', desc: 'Arco alto de gran alcance.' },
   morningstar: { name: 'Lucero del alba', category: 'Arma marcial cuerpo a cuerpo', cost: '15 po', weight: '4 lb', dmg: '1d8', type: 'perforante', props: '—', desc: 'Bola de hierro con púas sobre un mango.' },
   // ---------- Armaduras ----------
   leather: { name: 'Armadura de cuero', category: 'Armadura ligera', cost: '10 po', weight: '10 lb', ac: '11 + mod. Des', desc: 'Peto y hombreras de cuero endurecido.' },
@@ -29,6 +33,9 @@ module.exports = {
   arcane_focus: { name: 'Foco arcano (varita)', category: 'Foco arcano', cost: '10 po', weight: '1 lb', desc: 'Objeto que canaliza la magia arcana.' },
   rope: { name: 'Cuerda de cáñamo (50 pies)', category: 'Equipo', cost: '1 po', weight: '10 lb', desc: 'Aguanta hasta 2 PG por punto... o al menos a un enano.' },
   torch: { name: 'Antorcha', category: 'Equipo', cost: '1 pc', weight: '1 lb', desc: 'Arde 1 hora: luz brillante en 20 pies y tenue 20 pies más.' },
+  antitoxin: { name: 'Antitoxina', category: 'Consumible', cost: '50 po', weight: '—', desc: 'Ventaja en salvaciones contra veneno durante 1 hora. (Aquí: se bebe sola cuando hace falta).' },
+  holy_water: { name: 'Agua bendita (frasco)', category: 'Consumible', cost: '25 po', weight: '1 lb', desc: 'Arrojada contra un infernal o un muerto viviente le inflige 2d6 de daño radiante. (Aquí sirve en algunas escenas de la historia).' },
+  disguise_kit: { name: 'Útiles para disfrazarse', category: 'Herramientas', cost: '25 po', weight: '3 lb', desc: 'Cosméticos, tintes para el pelo y ropa para cambiar de aspecto.' },
   rations: { name: 'Raciones (1 día)', category: 'Equipo', cost: '5 pp', weight: '2 lb', desc: 'Comida seca para viajar.' },
   // ---------- Objetos mágicos ----------
   cloak_protection: { name: 'Capa de protección', category: 'Objeto maravilloso (poco común, requiere sintonización)', magic: true, equip: { ac: 1, saves: 1 }, desc: 'Obtienes +1 a la CA y a las tiradas de salvación mientras la lleves puesta.' },

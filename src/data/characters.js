@@ -22,7 +22,7 @@ module.exports = {
     background: 'Acólita',
     bio: 'Sacerdotisa de la forja del templo de su clan. Cree que todo lo roto puede repararse, sea una espada o una persona. Lleva al cuello el martillo sagrado de su abuela y una paciencia infinita para los heridos (no tanto para los cobardes).',
     abilities: { str: 13, dex: 10, con: 16, int: 8, wis: 16, cha: 12 },
-    hitDie: 8, saves: ['wis', 'cha'], dwarfToughness: true,
+    hitDie: 8, saves: ['wis', 'cha'], dwarfToughness: true, resist: ['veneno'],
     skills: ['insight', 'religion', 'medicine', 'persuasion'], expertise: [],
     armor: { base: 16, dexMax: 0, shield: true, heavy: true, name: 'Cota de malla + escudo' },
     weapons: [{ item: 'warhammer', ability: 'str' }],

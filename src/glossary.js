@@ -5,6 +5,9 @@ const SPELLS = require('./data/spells');
 const ITEMS = require('./data/items');
 const FEATURES = require('./data/features');
 const MONSTERS = require('./data/monsters');
+const RACES = require('./data/races');
+const CLASSES = require('./data/classes');
+const BACKGROUNDS = require('./data/backgrounds');
 const { ABILITIES } = require('./rules');
 
 const RULES = [
@@ -41,6 +44,20 @@ function build() {
       id, name: s.name, level: s.level, tag: `${s.level === 0 ? 'Truco' : `Nivel ${s.level}`} · ${s.school}${s.conc ? ' · Concentración' : ''}${s.ritual ? ' · Ritual' : ''}`,
       meta: `Tiempo: ${{ action: '1 acción', bonus: '1 acción adicional', reaction: '1 reacción' }[s.time]} · Alcance: ${s.range} · Componentes: ${s.components} · Duración: ${s.duration} · Clases: ${s.classes.join(', ')}`,
       desc: s.desc,
+    })),
+    races: Object.entries(RACES).filter(([id]) => id !== 'ANCESTRIES').map(([id, r]) => ({
+      id, name: r.name, tag: Object.entries(r.bonus).map(([k, v]) => `${ABILITIES[k].short} +${v}`).join(', ') + (r.plus1 ? `, +1 a ${r.plus1} a elegir` : ''),
+      meta: `Rasgos: ${r.features.map((f) => (FEATURES[f] ? FEATURES[f].name : f)).join(', ')}`,
+      desc: r.desc + (r.ancestry ? ` Linajes: ${Object.values(RACES.ANCESTRIES).map((a) => `${a.name} (${a.type})`).join(', ')}.` : ''),
+    })),
+    classes: Object.entries(CLASSES).map(([id, c]) => ({
+      id, name: c.name, tag: `Dado de golpe d${c.hitDie} · ${c.subclass}`,
+      meta: `Salvaciones: ${c.saves.map((k) => ABILITIES[k].name).join(' y ')} · Habilidades: ${c.skillChoices} a elegir entre ${c.skillList.map((k) => SKILLS[k].name).join(', ')}`,
+      desc: `${c.desc} ${c.role}. Rasgos: ${Object.entries(c.features).map(([l, list]) => `nivel ${l}: ${list.map((f) => FEATURES[f].name).join(', ')}`).join('; ')}.`,
+    })),
+    backgrounds: Object.entries(BACKGROUNDS).map(([id, b]) => ({
+      id, name: b.name, tag: `Habilidades: ${b.skills.map((k) => SKILLS[k].name).join(', ')}`,
+      desc: `${b.desc} Equipo: ${Object.keys(b.items).map((k) => ITEMS[k].name).join(', ')}.`,
     })),
     conditions: Object.entries(CONDITIONS).map(([id, c]) => ({ id, name: c.name, tag: c.effect ? 'Efecto de juego' : 'Condición', desc: c.desc })),
     monsters: Object.entries(MONSTERS).map(([id, m]) => ({

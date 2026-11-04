@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { Room } = require('./src/engine');
 const glossary = require('./src/glossary').build();
+const creation = require('./src/creation').build();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -63,6 +64,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname === '/api/glossary') return send(res, 200, glossary);
+    if (url.pathname === '/api/creation') return send(res, 200, creation);
     if (url.pathname === '/api/room' && req.method === 'POST') {
       const body = await readBody(req);
       const code = newCode();
@@ -120,8 +122,9 @@ const server = http.createServer(async (req, res) => {
 setInterval(() => {
   const now = Date.now();
   for (const [code, r] of rooms) {
-    if (now - r.lastActivity > 6 * 3600 * 1000 && !Object.values(r.players).some((p) => p.connected)) { r.destroy(); rooms.delete(code); }
+    if (now - r.lastActivity > 6 * 3600 * 1000 && !Object.values(r.players).some((p) => p.connected)) { r.dispose(); rooms.delete(code); }
   }
 }, 600000).unref();
 
-server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
+if (require.main === module) server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
+module.exports = { server, rooms };
