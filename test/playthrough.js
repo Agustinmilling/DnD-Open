@@ -38,6 +38,9 @@ function botTurn(room, pid) {
     pick((x) => x.key === 'spell:fire_bolt') ||
     pick((x) => x.key === 'spell:chill_touch' || x.key === 'spell:shocking_grasp' || x.key === 'spell:inflict_wounds') ||
     pick((x) => x.key === 'spell:sacred_flame') ||
+    pick((x) => x.key === 'spell:ray_of_frost') ||
+    pick((x) => x.key.startsWith('spell:') && ['enemy', 'enemies3'].includes(x.target) && !['spell:hold_person', 'spell:sleep'].includes(x.key)) ||
+    pick((x) => x.key === 'attack:0') ||
     pick((x) => x.key === 'end');
   let targets = [];
   if (['enemy', 'enemies3'].includes(a.target)) {
@@ -62,6 +65,8 @@ function play(nPlayers, advId, verbose = false) {
     return pid;
   });
   room.handle(pids[0], { type: 'adventure', id: advId });
+  // Quien desenvaina es un jugador con el personaje consciente (como haría una persona).
+  const awake = () => pids.find((pid) => { const pc = room.pcs[room.players[pid].charId]; return pc && pc.hp > 0; }) || pids[0];
   const origDefeat = room.defeat.bind(room);
   room.defeat = () => { const k = `${advId}:${room.sceneId}:${nPlayers}`; stats.defeatAt[k] = (stats.defeatAt[k] || 0) + 1; origDefeat(); };
   assert.strictEqual(room.advId, advId);
@@ -100,14 +105,15 @@ function play(nPlayers, advId, verbose = false) {
       const fight = v.scene.exits.find((e) => e.fight);
       if (pre.length && Math.random() < 0.6) {
         const c = pre[Math.floor(Math.random() * pre.length)];
-        try { room.handle(pids[Math.floor(Math.random() * pids.length)], { type: 'check', checkId: c.id }); } catch (e) { if (!/necesita|oro/.test(e.message)) throw e; room.handle(pids[0], { type: 'vote', exit: fight.idx }); }
-      } else room.handle(pids[0], { type: 'vote', exit: fight.idx });
+        try { room.handle(pids[Math.floor(Math.random() * pids.length)], { type: 'check', checkId: c.id }); } catch (e) { if (!/necesita|oro/.test(e.message)) throw e; room.handle(awake(), { type: 'vote', exit: fight.idx }); }
+      } else room.handle(awake(), { type: 'vote', exit: fight.idx });
       stats.encounters[v.scene.id + (room.combat ? ':lucha' : ':paz')] = (stats.encounters[v.scene.id + (room.combat ? ':lucha' : ':paz')] || 0) + 1;
       continue;
     }
     const check = v.scene.checks.find((c) => !c.done && !c.triedByMe && c.id !== 'force' && !c.cost && !c.needsItem && Math.random() < 0.8);
     if (check) {
-      const who = pids.find((p) => !room.viewFor(p).scene.checks.find((c) => c.id === check.id).triedByMe) || pids[0];
+      const conscious = (p) => { const pc = room.pcs[room.players[p].charId]; return pc && pc.hp > 0; };
+      const who = pids.find((p) => conscious(p) && !room.viewFor(p).scene.checks.find((c) => c.id === check.id).triedByMe) || awake();
       room.handle(who, { type: 'check', checkId: check.id });
       continue;
     }

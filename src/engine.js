@@ -257,7 +257,7 @@ class Room {
     if (this.phase !== 'lobby') throw new Error('La aventura ya ha comenzado');
     if (!this.partyPCs().length) throw new Error('Elegid al menos un personaje');
     this.phase = 'adventure';
-    this.flags = {}; this.flagOrder = [];
+    this.flags = {}; this.flagOrder = []; this.retries = {};
     for (const [k, v] of Object.entries(this.adv.startFlags || {})) this.setFlag(k, v);
     this.addLog('narration', `— ${this.adv.title} —`, { title: true });
     if (this.adv.startGold) { this.party.gold = this.adv.startGold * this.partyPCs().length; this.addLog('loot', `💰 El grupo empieza con ${this.party.gold} po.`); }
@@ -270,6 +270,7 @@ class Room {
     this.combat = null;
     this.flags = {};
     this.flagOrder = [];
+    this.retries = {};
     this.party = { gold: 0, loot: {} };
     for (const id of Object.keys(this.pcs)) {
       const owner = this.pcs[id].owner;
@@ -513,7 +514,8 @@ class Room {
     if (ex.requires && !ex.requires.some((f) => this.flags[f])) throw new Error('Todavía no podéis ir por ahí');
     if (ex.fight) {
       // atacar no se vota: cualquiera puede desenvainar
-      if (pc.hp <= 0) throw new Error('Tu personaje está inconsciente');
+      // Si todo el grupo está inconsciente fuera de combate, se deja avanzar para no bloquear la partida.
+      if (pc.hp <= 0 && this.activePCs().some((p) => p.hp > 0)) throw new Error('Tu personaje está inconsciente');
       this.addLog('action', `⚔️ ${pc.name}: ${ex.label}`);
       return this.startCombat(def.combat);
     }
@@ -625,7 +627,10 @@ class Room {
   // ---------------------------------------------------------------- combate
   startCombat(spec) {
     const n = this.activePCs().length;
-    const types = spec.enemies(n, this.flags);
+    let types = spec.enemies(n, this.flags);
+    // Regla de la casa contra la frustración: cada derrota repetida en la misma escena debilita el encuentro.
+    const retry = (this.retries && this.retries[this.sceneId]) || 0;
+    if (retry >= 1 && types.length > 1) types = types.slice(0, Math.max(1, types.length - retry));
     const counts = {};
     const enemies = {};
     types.forEach((type, i) => {
@@ -642,6 +647,11 @@ class Room {
       };
     });
     if (spec.adjust) spec.adjust(Object.values(enemies), this.flags, (t) => this.addLog('combat', t));
+    if (retry >= 1) {
+      const f = Math.max(0.4, 1 - 0.2 * retry);
+      for (const e of Object.values(enemies)) { e.hp = Math.max(1, Math.ceil(e.hp * f)); e.maxHp = e.hp; }
+      this.addLog('system', `🕯️ Lo intentáis de nuevo, con la lección aprendida: esta vez el enemigo parece ${retry > 1 ? 'mucho ' : ''}más débil. [Regla de la casa]`);
+    }
     this.combat = { round: 1, order: [], turn: 0, enemies, surprised: [], turnState: null, busy: false, xp: 0 };
     this.scene.encounterStarted = true;
     // sorpresa
@@ -800,6 +810,7 @@ class Room {
       for (const k of ['blessed', 'shielded', 'dodging', 'shield_spell', 'guided', 'hidden', 'helped', 'slowed_frost', 'prone', 'paralyzed', 'frightened']) delete pc.conditions[k];
     }
     this.addLog('combat', '🏁 ¡Victoria!', { fx: { kind: 'victory' } });
+    if (this.retries) delete this.retries[this.sceneId];
     const v = def.combat.victory;
     if (v.text) this.addLog('narration', this.txt(v.text));
     for (const f of v.flags || []) this.setFlag(f, true);
@@ -849,6 +860,8 @@ class Room {
       return;
     }
     this.addLog('combat', '💀 Todo el grupo ha caído...', { fx: { kind: 'defeat' } });
+    this.retries = this.retries || {};
+    this.retries[this.sceneId] = (this.retries[this.sceneId] || 0) + 1;
     this.addLog('narration', 'La oscuridad os envuelve. Pero esta no es la forma en que termina vuestra historia: el tiempo parece retroceder y volvéis a estar al principio de esta escena, con la lección aprendida.');
     const cp = clone(this.scene.checkpoint);
     const owners = {};
@@ -1057,6 +1070,13 @@ class Room {
     }
     pc.hp -= a;
     this.fxPush({ kind: 'dmg', target: pc.id, amount: a, crit: !!opts.crit });
+    if (pc.hp <= 0 && !this.combat) {
+      // Regla de la casa: fuera de combate (trampas, caídas, pruebas fallidas) nadie cae ni muere; queda a 1 PG.
+      // Así una trampa no puede matar a un personaje ni dejar la partida bloqueada sin nadie consciente.
+      pc.hp = 1;
+      this.addLog('down', `🩸 ${pc.name} queda malherido, a 1 PG.`, { fx: { kind: 'dmg', target: pc.id, amount: a } });
+      return;
+    }
     if (pc.hp <= 0) {
       const overflow = -pc.hp;
       pc.hp = 0;
