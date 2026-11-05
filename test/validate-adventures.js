@@ -55,7 +55,7 @@ function validate(adv) {
     for (const id of Object.keys(s.shop || {})) if (!ITEMS[id]) err(`${at}/shop`, `objeto desconocido "${id}"`);
     if (s.trap) { if (!s.trap.save || !s.trap.dc || !s.trap.damage || !s.trap.type) err(`${at}/trap`, 'la trampa necesita save, dc, damage y type'); read([s.trap.unless], `${at}/trap`); }
     if (s.ending && !TONES.includes(s.ending.tone)) err(at, `tono de final inválido "${s.ending.tone}" (good, mixed o bad)`);
-    if (s.end && !s.ending && adv.endingCount > 1) warn(at, 'escena final sin "ending { title, tone }"');
+    if (s.end && !s.ending) warn(at, 'escena final sin "ending { title, tone }" (no se mostrará la tarjeta de final)');
 
     const checkIds = new Set();
     for (const c of s.checks || []) {

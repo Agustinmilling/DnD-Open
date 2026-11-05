@@ -302,6 +302,7 @@ module.exports = {
     epilogo: {
       title: 'Epílogo: el regreso a Robledal',
       art: 'village',
+      ending: { title: 'Los héroes de Robledal', tone: 'good' },
       text: [
         'Toda la aldea sale a recibiros con antorchas. Los mineros abrazan a sus familias y la alcaldesa Maren cumple su palabra: os paga la recompensa prometida y la posada del Ciervo Cojo os invita a una semana de sopa de cebolla.',
         { if: (f) => f.minersFreed, text: 'Los mineros cuentan a todo el que quiera oírlo cómo los liberasteis delante de las narices del osgo. Os llaman "los Sombras de Robledal".' },

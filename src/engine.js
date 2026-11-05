@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 // Motor de partida: salas, escenas, pruebas, combate por turnos y progresión.
 const { roll, d20, combineMode, critExpr } = require('./dice');
 const { mod, fmtMod, XP_BY_CR, ABILITIES, XP_TABLE } = require('./rules');
@@ -147,8 +148,9 @@ class Room {
 
   // ---------------------------------------------------------------- jugadores
   join(name) {
-    const id = 'p' + Math.random().toString(36).slice(2, 10);
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    let id;
+    do { id = 'p' + crypto.randomBytes(5).toString('hex'); } while (this.players[id]);
+    const token = crypto.randomBytes(18).toString('base64url'); // secreto de sesión: no debe ser adivinable
     const clean = String(name || 'Aventurero').trim().slice(0, 24) || 'Aventurero';
     this.players[id] = { id, name: clean, token, charId: null, connected: false, lastSeen: Date.now() };
     if (!this.hostId) this.hostId = id;
@@ -156,8 +158,15 @@ class Room {
     this.emit();
     return { pid: id, token };
   }
+  /** Hace sitio en una sala llena quitando a espectadores desconectados (sin personaje). */
+  evictIdle() {
+    const idle = Object.values(this.players).filter((p) => !p.connected && !p.charId && p.id !== this.hostId).sort((a, b) => a.lastSeen - b.lastSeen)[0];
+    if (!idle) return false;
+    delete this.players[idle.id];
+    return true;
+  }
   auth(pid, token) {
-    const p = this.players[pid];
+    const p = Object.prototype.hasOwnProperty.call(this.players, pid) ? this.players[pid] : null;
     return p && p.token === token ? p : null;
   }
   setConnected(pid, on) {
@@ -249,7 +258,8 @@ class Room {
   }
 
   pickCharacter(player, charId) {
-    if (!C.TEMPLATES[charId]) throw new Error('Personaje desconocido');
+    const tpl = Object.prototype.hasOwnProperty.call(C.TEMPLATES, charId) ? C.TEMPLATES[charId] : null;
+    if (!tpl || (tpl.custom && tpl.room !== this.code)) throw new Error('Personaje desconocido');
     if (this.combat) throw new Error('No puedes cambiar de personaje durante un combate');
     const takenBy = Object.values(this.players).find((p) => p.charId === charId && p.id !== player.id);
     if (takenBy && takenBy.connected) throw new Error(`${takenBy.name} ya controla a ese personaje`);

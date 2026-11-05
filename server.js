@@ -144,7 +144,7 @@ const server = http.createServer(async (req, res) => {
       if (limited(`join:${ip}`, LIMITS.joinsPerIp, 600000)) return send(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' });
       const body = await readBody(req);
       const room = getRoom(body.code);
-      if (Object.keys(room.players).length >= 8) return send(res, 400, { error: 'La sala está llena' });
+      if (Object.keys(room.players).length >= 8 && !room.evictIdle()) return send(res, 400, { error: 'La sala está llena' });
       return send(res, 200, { code: room.code, ...room.join(body.name) });
     }
     if (url.pathname === '/api/check') {
