@@ -2,7 +2,7 @@
 
 Aquí viven los dos agentes que ayudan a crear aventuras nuevas.
 
-- `fuentes/`: deja aquí libros, módulos o campañas (PDF, .txt, .md, .epub). **No se guarda en git**, porque tienen derechos de autor.
+- `fuentes/`: deja aquí libros, módulos o campañas (PDF, .txt, .md, .epub). **No se guarda en git**, porque tienen derechos de autor. Por seguridad, git ignora también cualquier otro archivo o subcarpeta de `inspiracion/` y todos los PDF.
 - `analisis/`: fichas de técnicas narrativas que escribe el agente `analista-de-campanas`.
 - `propuestas/`: esquemas de aventuras originales, para que los apruebes antes de programarlos.
 

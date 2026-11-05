@@ -1,6 +1,14 @@
 node_modules/
 .DS_Store
 
-# Libros y campañas de referencia: tienen derechos de autor, no se guardan en git
+# Material de referencia (libros, PDF): tiene derechos de autor y nunca se sube a git.
+# Solo se versionan las instrucciones, las fichas de análisis y las propuestas.
+inspiracion/*
+!inspiracion/README.md
+!inspiracion/analisis/
+!inspiracion/propuestas/
+!inspiracion/fuentes/
 inspiracion/fuentes/*
 !inspiracion/fuentes/.gitkeep
+*.pdf
+*.epub
