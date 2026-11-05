@@ -110,7 +110,7 @@ npm run tunel                       # en otra: imprime https://<algo>.trycloudfl
 
 Para dejarlo siempre en marcha (arranca solo con el PC): `bash scripts/instalar-servicios.sh`. La dirección cambia en cada arranque del túnel; consúltala con `npm run enlace`.
 
-**En Render** (dirección fija, funciona con el PC apagado). [![Desplegar en Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Agustinmilling/mesa-de-dados) Sube el proyecto a un repositorio de GitHub y, en render.com, crea un *Blueprint* con ese repositorio: `render.yaml` ya tiene la configuración. En el plan gratuito el servidor se duerme tras 15 minutos sin visitas, tarda en despertar y al dormirse se cierran las salas abiertas.
+**En Render** (dirección fija, funciona con el PC apagado). [![Desplegar en Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Agustinmilling/DnD-Open) Sube el proyecto a un repositorio de GitHub y, en render.com, crea un *Blueprint* con ese repositorio: `render.yaml` ya tiene la configuración. En el plan gratuito el servidor se duerme tras 15 minutos sin visitas, tarda en despertar y al dormirse se cierran las salas abiertas.
 
 ## Crear aventuras nuevas con agentes
 
