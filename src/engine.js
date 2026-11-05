@@ -40,6 +40,7 @@ class Room {
 
   // ---------------------------------------------------------------- utilidades
   emit() {
+    this.version = (this.version || 0) + 1; // lo usan los clientes que consultan por sondeo
     for (const fn of this.listeners) fn();
   }
   schedule(fn, ms = this.delay) {

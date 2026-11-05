@@ -81,22 +81,59 @@
   function saveCreds() { try { localStorage.setItem(credKey(S.code), JSON.stringify({ pid: S.pid, token: S.token })); localStorage.setItem('mesa:name', $('#nameInput').value.trim()); } catch {} }
   function loadCreds(code) { try { return JSON.parse(localStorage.getItem(credKey(code)) || 'null'); } catch { return null; } }
 
+  // Tiempo real: primero SSE. Si en unos segundos no llega nada (algunos túneles y proxies retienen SSE),
+  // se pasa a sondeo largo (/api/poll), que funciona en cualquier red. La pestaña recuerda qué modo funcionó.
+  let liveGen = 0;
+  const POLL_KEY = 'mesa:poll';
   function connect() {
-    if (S.es) S.es.close();
+    if (S.es) { S.es.close(); S.es = null; }
+    const gen = ++liveGen;
     history.replaceState(null, '', `/?sala=${S.code}`);
     Object.assign(S, { lastLog: 0, lastChat: 0, fxReady: false, art: null, afterScene: false });
     S.fxDone.clear();
     $('#log').innerHTML = ''; $('#chat').innerHTML = '';
+    let usePoll = false;
+    try { usePoll = sessionStorage.getItem(POLL_KEY) === '1'; } catch {}
+    if (usePoll) return pollLoop(gen);
     const es = new EventSource(`/api/stream?code=${S.code}&pid=${S.pid}&token=${S.token}`);
     S.es = es;
-    es.onmessage = (ev) => { S.view = JSON.parse(ev.data); render(); };
+    let got = false;
+    const fallback = setTimeout(() => {
+      if (got || gen !== liveGen) return;
+      es.close(); S.es = null;
+      try { sessionStorage.setItem(POLL_KEY, '1'); } catch {}
+      pollLoop(gen);
+    }, 4000);
+    es.onmessage = (ev) => { got = true; clearTimeout(fallback); S.view = JSON.parse(ev.data); render(); };
     es.onerror = async () => {
       // si la sala ya no existe, volver al inicio
       try {
         const r = await fetch(`/api/check?code=${S.code}&pid=${S.pid}&token=${S.token}`);
-        if (r.status === 404 || r.status === 403) { es.close(); try { localStorage.removeItem(credKey(S.code)); } catch {} showHome('La sala ya no existe. Crea una nueva.'); }
+        if (r.status === 404 || r.status === 403) { clearTimeout(fallback); es.close(); roomGone(); }
       } catch {}
     };
+  }
+  function roomGone() {
+    liveGen++;
+    try { localStorage.removeItem(credKey(S.code)); } catch {}
+    showHome('La sala ya no existe. Crea una nueva.');
+  }
+  async function pollLoop(gen) {
+    let v = -1;
+    while (gen === liveGen) {
+      try {
+        const r = await fetch(`/api/poll?code=${S.code}&pid=${S.pid}&token=${S.token}&v=${v}`, { cache: 'no-store' });
+        if (gen !== liveGen) return;
+        if (r.status === 404 || r.status === 403) return roomGone();
+        if (!r.ok) { await new Promise((ok) => setTimeout(ok, 2000)); continue; }
+        const d = await r.json();
+        if (gen !== liveGen) return;
+        v = d.v;
+        if (d.view) { S.view = d.view; render(); }
+      } catch {
+        await new Promise((ok) => setTimeout(ok, 2000));
+      }
+    }
   }
 
   // ------------------------------------------------------------------ inicio

@@ -65,7 +65,9 @@ function readBody(req) {
 
 // Conexiones SSE: cada sala avisa a sus suscriptores, que reciben su vista personalizada.
 function subscribe(room, pid, res) {
-  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...SECURITY_HEADERS });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...SECURITY_HEADERS });
+  // Relleno inicial: algunos proxies retienen las primeras KB antes de empezar a enviar.
+  res.write(`: ${' '.repeat(2048)}\n\n`);
   openStreams += 1;
   let pending = false;
   const push = () => {
@@ -84,9 +86,42 @@ function subscribe(room, pid, res) {
     clearInterval(ping);
     room.listeners.delete(push);
     conns[pid] -= 1;
-    if (conns[pid] <= 0) room.setConnected(pid, false);
+    if (conns[pid] <= 0 && !(room.pollSeen || {})[pid]) room.setConnected(pid, false);
   });
 }
+
+// Plan B al tiempo real: sondeo largo. El cliente pregunta con la versión que tiene; si la sala no ha cambiado,
+// la respuesta espera hasta 25 s a que cambie. Funciona detrás de cualquier túnel o proxy que retenga SSE.
+const POLL_WAIT = 25000;
+function markPoll(room, pid) {
+  const seen = (room.pollSeen = room.pollSeen || {});
+  seen[pid] = Date.now();
+  if (room.players[pid] && !room.players[pid].connected) room.setConnected(pid, true);
+}
+function longPoll(room, pid, since, res) {
+  markPoll(room, pid);
+  const reply = () => { markPoll(room, pid); send(res, 200, { v: room.version || 0, view: room.viewFor(pid) }); };
+  if ((room.version || 0) !== since) return reply();
+  let done = false;
+  const finish = (withView) => {
+    if (done) return; done = true;
+    room.listeners.delete(onChange); clearTimeout(timer); openStreams -= 1;
+    if (!res.writableEnded && !res.destroyed) { if (withView) reply(); else { markPoll(room, pid); send(res, 200, { v: since, view: null }); } }
+  };
+  const onChange = () => setImmediate(() => finish(true));
+  const timer = setTimeout(() => finish(false), POLL_WAIT);
+  openStreams += 1;
+  room.listeners.add(onChange);
+  res.on('close', () => finish(false));
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    for (const [pid, t] of Object.entries(room.pollSeen || {})) {
+      if (now - t > POLL_WAIT + 15000) { delete room.pollSeen[pid]; if (!((room.conns || {})[pid] > 0)) room.setConnected(pid, false); }
+    }
+  }
+}, 10000).unref();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -124,6 +159,13 @@ const server = http.createServer(async (req, res) => {
       const inRoom = Object.values(room.conns || {}).reduce((a, b) => a + Math.max(0, b), 0);
       if (openStreams >= LIMITS.maxStreams || inRoom >= LIMITS.streamsPerRoom) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
       return subscribe(room, p.id, res);
+    }
+    if (url.pathname === '/api/poll') {
+      const room = getRoom(url.searchParams.get('code'));
+      const p = room.auth(url.searchParams.get('pid'), url.searchParams.get('token'));
+      if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
+      if (openStreams >= LIMITS.maxStreams) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
+      return longPoll(room, p.id, Number(url.searchParams.get('v')), res);
     }
     if (url.pathname === '/api/action' && req.method === 'POST') {
       const body = await readBody(req);
