@@ -86,6 +86,8 @@ src/creation.js        Datos para el asistente de creación de personaje (/api/c
 src/data/              Habilidades, condiciones, conjuros, objetos, rasgos, razas, clases, trasfondos, personajes y monstruos
 src/data/adventures/   Las aventuras (una por archivo) e index.js, que las registra
 public/                Interfaz web (HTML/CSS/JS sin frameworks), glosario y fx.js (ilustraciones SVG, partículas y animaciones)
+scripts/               Túnel público y servicios de systemd (ver «Jugar por internet»)
+render.yaml            Configuración para desplegar en Render
 test/validate-adventures.js  Revisión estática de las aventuras (npm run check)
 docs/formato-aventuras.md    Referencia del formato de aventuras
 .claude/agents/        Agentes de Claude Code para crear historias (ver abajo)
@@ -93,6 +95,22 @@ test/playthrough.js    Simula 120 partidas con bots (las 3 aventuras, 1-4 jugado
 ```
 
 Para crear otra aventura, copia `src/data/adventures/gaviota.js` y regístrala en `index.js`. Cada escena tiene ilustración (`art`), textos que dependen de *flags*, pruebas (`checks`, con coste, objeto necesario, `dcMod` según contadores o resultado pacífico), tienda (`shop`), trampas, combate (`combat`, con `defeat.to` para una escena de captura) y salidas (`exits`, con `when`, `effects` y `hint`). Las consecuencias admiten `flags`, `unset`, `inc` (contadores), `set`, `goto` y más; `redirect` envía a un final según las decisiones y `milestoneLevel` sube al grupo de nivel por hito.
+
+## Jugar por internet
+
+El servidor está preparado para abrirse a internet: limita cuántas salas, conexiones y acciones puede hacer cada uno, y tiene `/healthz` para comprobar que está vivo. No hay cuentas: entra quien tenga el enlace y el código de la sala.
+
+**Desde tu PC con un túnel de Cloudflare** (gratis, sin cuenta). Tu PC hace de servidor y tiene que estar encendido.
+
+```bash
+sudo pacman -S cloudflared          # una vez (o el paquete de tu distribución)
+npm start                           # en una terminal
+npm run tunel                       # en otra: imprime https://<algo>.trycloudflare.com
+```
+
+Para dejarlo siempre en marcha (arranca solo con el PC): `bash scripts/instalar-servicios.sh`. La dirección cambia en cada arranque del túnel; consúltala con `npm run enlace`.
+
+**En Render** (dirección fija, funciona con el PC apagado). Sube el proyecto a un repositorio de GitHub y, en render.com, crea un *Blueprint* con ese repositorio: `render.yaml` ya tiene la configuración. En el plan gratuito el servidor se duerme tras 15 minutos sin visitas, tarda en despertar y al dormirse se cierran las salas abiertas.
 
 ## Crear aventuras nuevas con agentes
 

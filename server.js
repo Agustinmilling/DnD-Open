@@ -9,6 +9,32 @@ const creation = require('./src/creation').build();
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const rooms = new Map();
+
+// Límites para poder abrir el servidor a internet sin que un abuso lo tumbe.
+const LIMITS = {
+  maxRooms: Number(process.env.MAX_ROOMS || 300),     // salas abiertas a la vez
+  maxStreams: Number(process.env.MAX_STREAMS || 600), // conexiones en tiempo real en total
+  streamsPerRoom: 24,
+  roomsPerIp: 12,      // salas nuevas por IP cada 10 minutos
+  joinsPerIp: 60,      // entradas a sala por IP cada 10 minutos
+  actionsPerPlayer: 25, // acciones por jugador cada 5 segundos
+};
+let openStreams = 0;
+const buckets = new Map();
+function limited(key, max, windowMs) {
+  const now = Date.now();
+  let b = buckets.get(key);
+  if (!b || now - b.start > windowMs) { b = { start: now, n: 0 }; buckets.set(key, b); }
+  b.n += 1;
+  return b.n > max;
+}
+setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now - b.start > 15 * 60000) buckets.delete(k); }, 60000).unref();
+// Detrás de un túnel o de un proxy (Cloudflare, Render) la IP real llega en una cabecera.
+function clientIp(req) {
+  const xf = req.headers['cf-connecting-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xf || req.socket.remoteAddress || '?';
+}
+const SECURITY_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'no-referrer' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 
 function newCode() {
@@ -25,21 +51,22 @@ function getRoom(code) {
 }
 
 function send(res, status, obj) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
   res.end(JSON.stringify(obj));
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 20000) { reject(new Error('Cuerpo demasiado grande')); req.destroy(); } });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(new Error('JSON no válido')); } });
+    req.on('data', (c) => { data += c; if (data.length > 20000) { reject(Object.assign(new Error('Cuerpo demasiado grande'), { status: 413 })); req.destroy(); } });
+    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(Object.assign(new Error('JSON no válido'), { status: 400 })); } });
   });
 }
 
 // Conexiones SSE: cada sala avisa a sus suscriptores, que reciben su vista personalizada.
 function subscribe(room, pid, res) {
-  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...SECURITY_HEADERS });
+  openStreams += 1;
   let pending = false;
   const push = () => {
     if (pending) return;
@@ -53,6 +80,7 @@ function subscribe(room, pid, res) {
   push();
   const ping = setInterval(() => res.write(': ping\n\n'), 20000);
   res.on('close', () => {
+    openStreams -= 1;
     clearInterval(ping);
     room.listeners.delete(push);
     conns[pid] -= 1;
@@ -62,10 +90,14 @@ function subscribe(room, pid, res) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  const ip = clientIp(req);
   try {
+    if (url.pathname === '/healthz') return send(res, 200, { ok: true, rooms: rooms.size, streams: openStreams });
     if (url.pathname === '/api/glossary') return send(res, 200, glossary);
     if (url.pathname === '/api/creation') return send(res, 200, creation);
     if (url.pathname === '/api/room' && req.method === 'POST') {
+      if (limited(`room:${ip}`, LIMITS.roomsPerIp, 600000)) return send(res, 429, { error: 'Has creado demasiadas salas. Espera unos minutos.' });
+      if (rooms.size >= LIMITS.maxRooms) return send(res, 503, { error: 'El servidor está lleno ahora mismo. Prueba más tarde.' });
       const body = await readBody(req);
       const code = newCode();
       const room = new Room(code);
@@ -74,6 +106,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { code, ...auth });
     }
     if (url.pathname === '/api/join' && req.method === 'POST') {
+      if (limited(`join:${ip}`, LIMITS.joinsPerIp, 600000)) return send(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' });
       const body = await readBody(req);
       const room = getRoom(body.code);
       if (Object.keys(room.players).length >= 8) return send(res, 400, { error: 'La sala está llena' });
@@ -88,6 +121,8 @@ const server = http.createServer(async (req, res) => {
       const room = getRoom(url.searchParams.get('code'));
       const p = room.auth(url.searchParams.get('pid'), url.searchParams.get('token'));
       if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
+      const inRoom = Object.values(room.conns || {}).reduce((a, b) => a + Math.max(0, b), 0);
+      if (openStreams >= LIMITS.maxStreams || inRoom >= LIMITS.streamsPerRoom) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
       return subscribe(room, p.id, res);
     }
     if (url.pathname === '/api/action' && req.method === 'POST') {
@@ -95,6 +130,7 @@ const server = http.createServer(async (req, res) => {
       const room = getRoom(body.code);
       const p = room.auth(body.pid, body.token);
       if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
+      if (limited(`act:${room.code}:${p.id}`, LIMITS.actionsPerPlayer, 5000)) return send(res, 429, { error: 'Vas demasiado rápido' });
       try {
         room.handle(p.id, body.msg || {});
       } catch (e) {
@@ -107,14 +143,16 @@ const server = http.createServer(async (req, res) => {
     // archivos estáticos
     let file = url.pathname === '/' ? '/index.html' : url.pathname === '/glosario' ? '/glossary.html' : url.pathname;
     const full = path.normalize(path.join(PUBLIC, decodeURIComponent(file)));
-    if (!full.startsWith(PUBLIC)) return send(res, 403, { error: 'Prohibido' });
+    if (!full.startsWith(PUBLIC + path.sep)) return send(res, 403, { error: 'Prohibido' });
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Método no permitido' });
     fs.readFile(full, (err, data) => {
       if (err) { res.writeHead(404); return res.end('No encontrado'); }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream' });
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ...SECURITY_HEADERS });
       res.end(data);
     });
   } catch (e) {
-    send(res, e.status || 500, { error: e.message });
+    if (!e.status) console.error(new Date().toISOString(), req.method, url.pathname, e.message);
+    if (!res.headersSent) send(res, e.status || 500, { error: e.message });
   }
 });
 
@@ -126,5 +164,7 @@ setInterval(() => {
   }
 }, 600000).unref();
 
+server.requestTimeout = 30000; // las conexiones SSE no se ven afectadas: la cabecera llega enseguida
+server.headersTimeout = 15000;
 if (require.main === module) server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
 module.exports = { server, rooms };

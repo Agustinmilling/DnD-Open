@@ -1,0 +1,10 @@
+# Despliegue en Render (https://render.com): New > Blueprint y elige este repositorio.
+services:
+  - type: web
+    name: mesa-de-dados
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true

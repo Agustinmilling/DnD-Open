@@ -6,6 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
+    "tunel": "bash scripts/tunel.sh",
+    "enlace": "bash scripts/enlace.sh",
     "check": "node test/validate-adventures.js",
     "test": "node test/validate-adventures.js && node test/playthrough.js"
   },
