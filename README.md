@@ -68,9 +68,11 @@ El servidor tiene que ser accesible desde internet. Opciones sencillas:
 ### Simplificaciones y reglas de la casa
 
 - **Teatro de la mente**: no hay mapa ni distancias; el movimiento no se gestiona. El Ataque furtivo se activa con ventaja o si hay otro aliado consciente en combate.
-- Si cae **todo el grupo**, la escena se repite desde el principio.
+- Si cae **todo el grupo**, la escena se repite desde el principio (o el grupo acaba capturado, si la escena lo prevé). Cada derrota repetida en la misma escena quita un enemigo y les baja los PG.
 - Si el grupo gana un combate, quien haya **muerto** vuelve con 1 PG y un nivel de agotamiento.
-- Si un jugador se desconecta en combate, su personaje usa *Esquivar* automáticamente.
+- **Fuera de combate** (trampas, pruebas fallidas) nadie cae inconsciente ni muere: como mucho queda a 1 PG.
+- Si un jugador se desconecta en combate, o pasa **2 minutos** sin actuar en su turno, su personaje usa *Esquivar* y pasa el turno.
+- Si el anfitrión se va, otro jugador conectado pasa a ser anfitrión. Las recompensas de cada escena se cobran una sola vez.
 - Los encuentros se ajustan al tamaño del grupo (1 a 4 personajes).
 
 ## Estructura
