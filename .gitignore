@@ -1,2 +1,6 @@
 node_modules/
 .DS_Store
+
+# Libros y campañas de referencia: tienen derechos de autor, no se guardan en git
+inspiracion/fuentes/*
+!inspiracion/fuentes/.gitkeep

@@ -86,10 +86,22 @@ src/creation.js        Datos para el asistente de creación de personaje (/api/c
 src/data/              Habilidades, condiciones, conjuros, objetos, rasgos, razas, clases, trasfondos, personajes y monstruos
 src/data/adventures/   Las aventuras (una por archivo) e index.js, que las registra
 public/                Interfaz web (HTML/CSS/JS sin frameworks), glosario y fx.js (ilustraciones SVG, partículas y animaciones)
+test/validate-adventures.js  Revisión estática de las aventuras (npm run check)
+docs/formato-aventuras.md    Referencia del formato de aventuras
+.claude/agents/        Agentes de Claude Code para crear historias (ver abajo)
 test/playthrough.js    Simula 120 partidas con bots (las 3 aventuras, 1-4 jugadores, personajes creados al azar) y comprueba que se llega a un final en nivel 3 (npm test; N=25 npm test para más)
 ```
 
 Para crear otra aventura, copia `src/data/adventures/gaviota.js` y regístrala en `index.js`. Cada escena tiene ilustración (`art`), textos que dependen de *flags*, pruebas (`checks`, con coste, objeto necesario, `dcMod` según contadores o resultado pacífico), tienda (`shop`), trampas, combate (`combat`, con `defeat.to` para una escena de captura) y salidas (`exits`, con `when`, `effects` y `hint`). Las consecuencias admiten `flags`, `unset`, `inc` (contadores), `set`, `goto` y más; `redirect` envía a un final según las decisiones y `milestoneLevel` sube al grupo de nivel por hito.
+
+## Crear aventuras nuevas con agentes
+
+El proyecto incluye dos agentes de Claude Code (en `.claude/agents/`):
+
+- **analista-de-campanas** lee libros o campañas que dejes en `inspiracion/fuentes/` (fuera de git) y escribe fichas de técnicas en `inspiracion/analisis/`. Con esas fichas propone esquemas de aventuras originales en `inspiracion/propuestas/`.
+- **disenador-aventuras** programa una propuesta aprobada en `src/data/adventures/`, la registra y la prueba con `npm run check` y `npm test`.
+
+Más detalles en `inspiracion/README.md`. Los agentes aprenden técnicas de las obras, pero no copian su texto, nombres ni tramas.
 
 ## Ideas para siguientes versiones
 
