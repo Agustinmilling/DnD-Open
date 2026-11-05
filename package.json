@@ -9,6 +9,7 @@
     "tunel": "bash scripts/tunel.sh",
     "enlace": "bash scripts/enlace.sh",
     "check": "node test/validate-adventures.js",
+    "fuzz": "node test/fuzz.js",
     "test": "node test/validate-adventures.js && node test/playthrough.js"
   },
   "engines": { "node": ">=18" },

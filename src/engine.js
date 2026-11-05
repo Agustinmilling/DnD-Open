@@ -13,8 +13,57 @@ const ADVENTURES = require('./data/adventures');
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let logSeq = 0;
 
+const AFK_MS = 120000;
+
+// ---------------------------------------------------------------- validación de mensajes
+// Los mensajes llegan del navegador y no son de fiar: un id como "constructor" o "__proto__" apuntaría a
+// propiedades de Object y podría romper la sala para todos. Se normalizan los tipos y se rechazan esas claves.
+const isBadKey = (v) => typeof v === 'string' && (v === '__proto__' || v in Object.prototype);
+function badDeep(v, depth = 0) {
+  if (isBadKey(v)) return true;
+  if (depth > 3 || !v || typeof v !== 'object') return false;
+  return Object.keys(v).some((k) => isBadKey(k) || badDeep(v[k], depth + 1));
+}
+function sanitizeMsg(msg) {
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error('Mensaje no válido');
+  if (typeof msg.type !== 'string') throw new Error('Acción desconocida');
+  const out = { type: msg.type };
+  for (const k of ['charId', 'id', 'checkId', 'item', 'key', 'expr', 'mode', 'target']) {
+    if (msg[k] === undefined || msg[k] === null) continue;
+    if (typeof msg[k] !== 'string' || msg[k].length > 80 || isBadKey(msg[k])) throw new Error('Datos no válidos');
+    out[k] = msg[k];
+  }
+  if (msg.text !== undefined) out.text = String(msg.text ?? '');
+  if (msg.label !== undefined && msg.label !== null) out.label = String(msg.label);
+  if (msg.exit !== undefined) {
+    const e = Number(msg.exit);
+    if (!Number.isInteger(e) || e < 0 || e > 50) throw new Error('Esa opción no está disponible ahora');
+    out.exit = e;
+  }
+  if (msg.slot !== undefined && msg.slot !== null) {
+    const sl = Number(msg.slot);
+    if (!Number.isInteger(sl) || sl < 1 || sl > 9) throw new Error('Espacio de conjuro no válido');
+    out.slot = sl;
+  }
+  if (msg.targets !== undefined && msg.targets !== null) {
+    if (!Array.isArray(msg.targets) || msg.targets.length > 8 || msg.targets.some((t) => typeof t !== 'string' || isBadKey(t))) throw new Error('Objetivos no válidos');
+    out.targets = msg.targets.slice();
+  }
+  if (msg.sheet !== undefined && msg.sheet !== null) {
+    const sh = msg.sheet;
+    if (typeof sh !== 'object' || typeof sh.kind !== 'string' || (sh.key !== undefined && typeof sh.key !== 'string') || badDeep(sh)) throw new Error('Datos no válidos');
+    out.sheet = { kind: sh.kind, key: sh.key };
+  }
+  if (msg.spec !== undefined) {
+    if (msg.spec !== 'random' && (typeof msg.spec !== 'object' || msg.spec === null || badDeep(msg.spec) || JSON.stringify(msg.spec).length > 4000)) throw new Error('Personaje no válido');
+    out.spec = msg.spec;
+  }
+  return out;
+}
+
 class Room {
   constructor(code, opts = {}) {
+    this.afkMs = opts.afkMs || AFK_MS;
     this.code = code;
     this.delay = opts.delay ?? 900; // ms entre acciones de los enemigos
     this.players = {}; // pid -> {id,name,token,charId,connected,lastSeen}
@@ -45,7 +94,12 @@ class Room {
   }
   schedule(fn, ms = this.delay) {
     if (ms <= 0) return fn();
-    const t = setTimeout(() => { this.timers.delete(t); fn(); this.emit(); }, ms);
+    const t = setTimeout(() => {
+      this.timers.delete(t);
+      // un error dentro de un temporizador tumbaría el servidor entero: se registra y la sala sigue
+      try { fn(); } catch (e) { console.error(`[sala ${this.code}] error en un temporizador:`, e); if (this.combat) this.combat.busy = false; }
+      this.emit();
+    }, ms);
     this.timers.add(t);
   }
   destroy() { for (const t of this.timers) clearTimeout(t); this.timers.clear(); }
@@ -115,15 +169,20 @@ class Room {
       const other = Object.values(this.players).find((x) => x.connected);
       if (other) this.hostId = other.id;
     }
-    if (on && this.combat) this.maybeAutoTurn();
+    // si el anfitrión sigue fuera, quien vuelve hereda el papel (si no, nadie podría empezar ni reiniciar)
+    const host = this.players[this.hostId];
+    if (on && (!host || !host.connected) && this.hostId !== pid) this.hostId = pid;
+    if (this.combat) this.maybeAutoTurn();
+    else if (!on) this.tallyVotes();
     this.emit();
   }
 
   // ---------------------------------------------------------------- acciones
   handle(pid, msg) {
     this.lastActivity = Date.now();
-    const player = this.players[pid];
+    const player = Object.prototype.hasOwnProperty.call(this.players, pid) ? this.players[pid] : null;
     if (!player) throw new Error('Jugador desconocido');
+    msg = sanitizeMsg(msg);
     const pc = player.charId ? this.pcs[player.charId] : null;
     switch (msg.type) {
       case 'chat': return this.doChat(player, pc, msg.text);
@@ -257,7 +316,7 @@ class Room {
     if (this.phase !== 'lobby') throw new Error('La aventura ya ha comenzado');
     if (!this.partyPCs().length) throw new Error('Elegid al menos un personaje');
     this.phase = 'adventure';
-    this.flags = {}; this.flagOrder = []; this.retries = {};
+    this.flags = {}; this.flagOrder = []; this.retries = {}; this.rewarded = {};
     for (const [k, v] of Object.entries(this.adv.startFlags || {})) this.setFlag(k, v);
     this.addLog('narration', `— ${this.adv.title} —`, { title: true });
     if (this.adv.startGold) { this.party.gold = this.adv.startGold * this.partyPCs().length; this.addLog('loot', `💰 El grupo empieza con ${this.party.gold} po.`); }
@@ -271,6 +330,7 @@ class Room {
     this.flags = {};
     this.flagOrder = [];
     this.retries = {};
+    this.rewarded = {};
     this.party = { gold: 0, loot: {} };
     for (const id of Object.keys(this.pcs)) {
       const owner = this.pcs[id].owner;
@@ -306,7 +366,10 @@ class Room {
     this.addLog('scene', def.title, { title: true, fx: { kind: 'scene', id, title: def.title } });
     for (const p of this.sceneTexts(def.text)) this.addLog('narration', p);
     if (def.trap && !this.flags[def.trap.unless]) this.runTrap(def.trap);
-    if (def.reward) {
+    // Las recompensas de escena se cobran una sola vez por aventura (ni al volver ni al repetir tras una derrota).
+    this.rewarded = this.rewarded || {};
+    if (def.reward && !this.rewarded[id]) {
+      this.rewarded[id] = true;
       if (def.reward.gold) { const g = def.reward.gold * this.partyPCs().length; this.party.gold += g; this.addLog('loot', `Recompensa: ${g} po para el grupo.`, { fx: { kind: 'gold', amount: g } }); }
       if (def.reward.xp) { this.addLog('xp', `✨ +${def.reward.xp} PX para cada personaje.`); for (const p of this.activePCs()) this.giveXp(p, def.reward.xp); }
     }
@@ -520,13 +583,30 @@ class Room {
       return this.startCombat(def.combat);
     }
     this.scene.votes[player.id] = exitIdx;
-    const voters = Object.values(this.players).filter((p) => p.charId && this.pcs[p.charId] && (p.connected || p.id === player.id));
+    const voters = this.voters(player.id);
     const count = voters.filter((p) => this.scene.votes[p.id] === exitIdx).length;
     this.addLog('system', `${player.name} vota: "${this.txt(ex.label)}" (${count}/${voters.length})`);
-    if (count > voters.length / 2) {
-      this.addLog('system', `El grupo decide: ${this.txt(ex.label)}.`);
-      if (ex.effects) this.applyOutcome(ex.effects, { group: true });
-      this.enterScene(this.txt(ex.to));
+    this.tallyVotes(player.id);
+  }
+
+  voters(extraId = null) {
+    return Object.values(this.players).filter((p) => p.charId && this.pcs[p.charId] && (p.connected || p.id === extraId));
+  }
+
+  /** Si alguna salida tiene mayoría, el grupo avanza. Se vuelve a contar cuando alguien se desconecta. */
+  tallyVotes(extraId = null) {
+    if (this.phase !== 'adventure' || this.combat || !this.scene || this.scene.restarting) return;
+    const def = this.sceneDef();
+    const voters = this.voters(extraId);
+    if (!voters.length) return;
+    for (const [i, ex] of def.exits.entries()) {
+      if (ex.fight || !this.exitVisible(ex) || (ex.requires && !ex.requires.some((f) => this.flags[f]))) continue;
+      const count = voters.filter((p) => this.scene.votes[p.id] === i).length;
+      if (count && count > voters.length / 2) {
+        this.addLog('system', `El grupo decide: ${this.txt(ex.label)}.`);
+        if (ex.effects) this.applyOutcome(ex.effects, { group: true });
+        return this.enterScene(this.txt(ex.to));
+      }
     }
   }
 
@@ -738,6 +818,22 @@ class Room {
     if (!cb || cb.busy) return;
     const c = this.current();
     if (!c || !this.isPC(c) || c.hp <= 0) return;
+    if (this.delay > 0 && cb.afkKey !== `${cb.round}:${cb.turn}`) {
+      // Turno abandonado: si el jugador no hace nada en 2 minutos, su personaje esquiva y pasa el turno.
+      const turnKey = (cb.afkKey = `${cb.round}:${cb.turn}`);
+      cb.lastAct = Date.now();
+      const check = () => {
+        if (!this.combat || `${this.combat.round}:${this.combat.turn}` !== turnKey || this.combat.busy) return;
+        const idle = Date.now() - (this.combat.lastAct || 0);
+        if (idle < this.afkMs) return this.schedule(check, this.afkMs - idle + 50);
+        const cur = this.current();
+        if (!cur || !this.isPC(cur) || cur.hp <= 0) return;
+        cur.conditions.dodging = {};
+        this.addLog('combat', `⏳ ${cur.name} lleva demasiado tiempo sin actuar: adopta una postura defensiva (Esquivar) y pasa el turno.`);
+        this.endTurn();
+      };
+      this.schedule(check, this.afkMs);
+    }
     if (this.isOrphan(c) && this.delay > 0) {
       const turnKey = `${cb.round}:${cb.turn}`;
       cb.autoKey = turnKey;
@@ -1312,6 +1408,7 @@ class Room {
     const cur = this.current();
     if (!cur || cur.id !== pc.id) throw new Error('No es tu turno');
     if (cb.busy) throw new Error('Espera un momento');
+    cb.lastAct = Date.now();
     const acts = this.combatActions(pc);
     const a = acts.find((x) => x.key === msg.key);
     if (!a) throw new Error('Esa acción no está disponible ahora');

@@ -208,5 +208,10 @@ setInterval(() => {
 
 server.requestTimeout = 30000; // las conexiones SSE no se ven afectadas: la cabecera llega enseguida
 server.headersTimeout = 15000;
-if (require.main === module) server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
+// Último recurso: un fallo inesperado se registra en vez de tumbar todas las salas.
+if (require.main === module) {
+  process.on('uncaughtException', (e) => console.error(new Date().toISOString(), 'uncaughtException', e));
+  process.on('unhandledRejection', (e) => console.error(new Date().toISOString(), 'unhandledRejection', e));
+  server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
+}
 module.exports = { server, rooms };

@@ -90,7 +90,7 @@ function validate(adv) {
     for (const c of s.checks || []) {
       const ok = (c.success && c.success.flags) || [];
       const ko = (c.fail && c.fail.flags) || [];
-      for (const f of ok) if (c.auto || c.retry || ko.includes(f)) sure.add(f);
+      for (const f of ok) if (c.auto || ko.includes(f)) sure.add(f); // retry no basta: si todos fallan, se cierra
     }
     if (!s.end && !s.redirect && !exits.some((ex) => ex.to) && !(s.checks || []).some((c) => (c.success && c.success.goto) || (c.fail && c.fail.goto))) err(at, 'escena sin salida (ni exits, ni redirect, ni goto, ni end)');
     const gatedOk = exits.some((ex) => {
@@ -101,7 +101,7 @@ function validate(adv) {
       return (s.checks || []).some((c) => ((c.success && c.success.flags) || []).some((f) => req.includes(f)) && ((c.fail && c.fail.flags) || []).some((f) => req.includes(f)));
     });
     if (!s.end && !s.redirect && exits.some((ex) => ex.to) && !free.length && !gatedOk) {
-      warn(at, 'todas las salidas están condicionadas: asegúrate de que siempre se puede activar alguna (las pruebas sin retry solo se tiran una vez)');
+      warn(at, 'todas las salidas están condicionadas: asegúrate de que siempre se puede activar alguna (si todos fallan las pruebas, ¿hay una prueba automática u otra salida?)');
     }
 
     if (s.combat) {

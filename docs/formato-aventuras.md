@@ -47,7 +47,7 @@ llegada: {
   trap: { unless: 'trampaVista', save: 'dex', dc: 12, damage: '2d6', type: 'perforante', text: '¡Clic!' },
   shop: { potion_healing: 50, rope: 1 },   // precio en po
   shortRest: true,                         // permite un descanso corto
-  reward: { gold: 20, xp: 150 },           // al entrar (por personaje)
+  reward: { gold: 20, xp: 150 },           // al entrar por primera vez (por personaje)
   milestoneLevel: 3,                       // sube a todos al menos a ese nivel
   combat: { /* ver abajo */ },
   checks: [ /* pruebas */ ],
@@ -77,7 +77,7 @@ fin_bueno: { title: 'Las campanas callan', art: 'ruins', ending: { title: 'Las c
   advIf: ['tieneLlave'], advIfItem: 'thieves_tools', disIf: ['heridos'],
   requires: ['vioPuerta'],               // aparece desactivada sin alguna de estas banderas
   showIf: ['vioPuerta'], hideIf: ['puertaAbierta'], when: (f) => num(f, 'tiempo') < 3,
-  retry: true,                           // se puede repetir (si no, solo una tirada por escena)
+  retry: true,                           // cada personaje puede intentarlo una vez (si no, una sola tirada para todo el grupo)
   preCombat: true,                       // solo antes de que empiece el combate de la escena
   success: { text: '…', flags: ['puertaAbierta'], xp: 50, inc: { sospecha: -1 } },
   fail:    { text: '…', inc: { sospecha: 1 }, damageFailed: { expr: '1d6', type: 'contundente' } } },
@@ -125,7 +125,7 @@ Sin `defeat.to`, si cae todo el grupo se repite la escena (regla de la casa).
 
 - Cada salida, `goto`, `defeat.to` y `redirect` apunta a escenas que existen y todas las escenas son alcanzables desde `start`.
 - Un combate con `auto` necesita una salida `{ fight: true }`. Las pruebas normales y las salidas sin `fight` quedan ocultas hasta resolver el encuentro.
-- Toda salida condicionada necesita un plan B: una prueba `auto`, una con `retry`, o una prueba que active una bandera válida tanto al acertar como al fallar. Si no, el grupo puede quedarse atascado.
+- Toda salida condicionada necesita un plan B: una prueba `auto`, o una prueba que active una bandera válida tanto al acertar como al fallar. Una prueba con `retry` no basta: si fallan todos, se cierra. Si no hay plan B, el grupo puede quedarse atascado.
 - `endingCount` = nº de escenas `end: true`, y cada final tiene `ending { title, tone }`.
 - Los personajes llegan al final a nivel 3 (900 PX). Reparte unos 300 PX hasta mitad de aventura y pon `milestoneLevel: 3` en la escena previa al clímax.
 - La dificultad se escala con `scale(n, [...])` para 1-4 jugadores. Un jugador solo: 1-2 enemigos débiles.
