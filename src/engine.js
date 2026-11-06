@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 // Motor de partida: salas, escenas, pruebas, combate por turnos y progresión.
-const { roll, d20, combineMode, critExpr } = require('./dice');
-const { mod, fmtMod, profBonus, ABILITIES, XP_TABLE } = require('./rules');
+const { roll, d20, combineMode } = require('./dice');
+const { mod, fmtMod, own, profBonus, ABILITIES, XP_TABLE } = require('./rules');
 const C = require('./character');
 const SPELLS = require('./data/spells');
 const ITEMS = require('./data/items');
@@ -17,6 +17,30 @@ let logSeq = 0;
 
 const AFK_MS = 120000;
 
+// ---------------------------------------------------------------- partes de la vista que no cambian
+const ADVENTURE_INFO = Object.fromEntries(Object.entries(ADVENTURES).map(([k, a]) => [k, {
+  id: a.id, title: a.title, summary: a.summary, art: a.art || 'tavern', length: a.length || '', endings: a.endingCount || 0, tags: a.tags || [],
+}]));
+// PG y CA de nivel 1 de cada plantilla para el catálogo (se calculan una vez por plantilla)
+const level1Cache = new WeakMap();
+function level1Stats(t) {
+  let e = level1Cache.get(t);
+  if (!e) {
+    const pre = C.createPC(t.id);
+    level1Cache.set(t, (e = { hp: pre.maxHp, ac: C.armorClass(pre) }));
+  }
+  return e;
+}
+/** Espacios de conjuro de la ficha: los del nivel y los que sobran (p. ej. creados con Fuente de magia) */
+function slotsView(pc) {
+  const max = C.maxSlots(pc);
+  const row = (l, cur, m) => ({ level: +l, cur, max: m });
+  return [
+    ...Object.entries(max).map(([l, m]) => row(l, pc.slots[l] || 0, m)),
+    ...Object.entries(pc.slots).filter(([l, n]) => n > 0 && !max[l]).map(([l, n]) => row(l, n, 0)),
+  ];
+}
+
 // ---------------------------------------------------------------- validación de mensajes
 // Los mensajes llegan del navegador y no son de fiar: un id como "constructor" o "__proto__" apuntaría a
 // propiedades de Object y podría romper la sala para todos. Se normalizan los tipos y se rechazan esas claves.
@@ -30,13 +54,18 @@ function sanitizeMsg(msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error('Mensaje no válido');
   if (typeof msg.type !== 'string') throw new Error('Acción desconocida');
   const out = { type: msg.type };
-  for (const k of ['charId', 'id', 'checkId', 'item', 'key', 'expr', 'mode', 'target']) {
+  for (const k of ['charId', 'id', 'checkId', 'item', 'key', 'expr', 'mode', 'target', 'op']) {
     if (msg[k] === undefined || msg[k] === null) continue;
     if (typeof msg[k] !== 'string' || msg[k].length > 80 || isBadKey(msg[k])) throw new Error('Datos no válidos');
     out[k] = msg[k];
   }
   if (msg.text !== undefined) out.text = String(msg.text ?? '');
   if (msg.label !== undefined && msg.label !== null) out.label = String(msg.label);
+  for (const k of ['pos', 'index']) {
+    if (msg[k] === undefined || msg[k] === null) continue;
+    if (typeof msg[k] !== 'number' || !Number.isFinite(msg[k])) throw new Error('Datos no válidos');
+    out[k] = msg[k];
+  }
   if (msg.exit !== undefined) {
     const e = Number(msg.exit);
     if (!Number.isInteger(e) || e < 0 || e > 50) throw new Error('Esa opción no está disponible ahora');
@@ -63,6 +92,27 @@ function sanitizeMsg(msg) {
   return out;
 }
 
+// Enlace o id de YouTube -> id de 11 caracteres (o null). Las listas (list=) no se soportan.
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be'];
+function youtubeId(text) {
+  text = String(text || '').trim().slice(0, 200);
+  if (YT_ID.test(text)) return text;
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text); } catch { return null; }
+  if (!YT_HOSTS.includes(u.hostname.toLowerCase())) return null;
+  const parts = u.pathname.split('/').filter(Boolean);
+  const id = u.hostname.toLowerCase().endsWith('youtu.be') ? parts[0]
+    : u.pathname === '/watch' ? u.searchParams.get('v')
+      : ['shorts', 'live', 'embed'].includes(parts[0]) ? parts[1] : null;
+  return YT_ID.test(id || '') ? id : null;
+}
+
+// Nombre de pista: sin caracteres de control, espacios colapsados, máx. 40 caracteres ('' = sin nombre)
+function trackName(text) {
+  return String(text ?? '').slice(0, 400).replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
 class Room {
   constructor(code, opts = {}) {
     this.afkMs = opts.afkMs || AFK_MS;
@@ -85,13 +135,19 @@ class Room {
     this.advId = Object.keys(ADVENTURES)[0];
     this.flagOrder = []; // orden en que se activan las marcas (para el diario)
     this.customIds = []; // personajes creados en esta sala
+    this.retries = {}; // escena -> derrotas seguidas (regla de la casa)
+    this.rewarded = {}; // escenas cuya recompensa ya se cobró
+    this.music = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; // cola de ids de YouTube (+ nombres paralelos); cada navegador reproduce la suya
+    this.version = 0;
+    this.conns = {}; // pid -> conexiones SSE abiertas (lo usa server.js)
+    this.pollSeen = {}; // pid -> última vez que sondeó (lo usa server.js)
   }
 
   get adv() { return ADVENTURES[this.advId]; }
 
   // ---------------------------------------------------------------- utilidades
   emit() {
-    this.version = (this.version || 0) + 1; // lo usan los clientes que consultan por sondeo
+    this.version += 1; // lo usan los clientes que consultan por sondeo
     for (const fn of this.listeners) fn();
   }
   schedule(fn, ms = this.delay) {
@@ -141,6 +197,7 @@ class Room {
   }
   partyPCs() { return Object.values(this.pcs); }
   activePCs() { return this.partyPCs().filter((p) => !p.dead); }
+  standingPCs() { return this.activePCs().filter((p) => p.hp > 0); } // vivos y conscientes
   ownerOf(pc) { return pc.owner ? this.players[pc.owner] : null; }
   isOrphan(pc) {
     const o = this.ownerOf(pc);
@@ -167,7 +224,7 @@ class Room {
     return true;
   }
   auth(pid, token) {
-    const p = Object.prototype.hasOwnProperty.call(this.players, pid) ? this.players[pid] : null;
+    const p = own(this.players, pid);
     return p && p.token === token ? p : null;
   }
   setConnected(pid, on) {
@@ -190,7 +247,7 @@ class Room {
   // ---------------------------------------------------------------- acciones
   handle(pid, msg) {
     this.lastActivity = Date.now();
-    const player = Object.prototype.hasOwnProperty.call(this.players, pid) ? this.players[pid] : null;
+    const player = own(this.players, pid);
     if (!player) throw new Error('Jugador desconocido');
     msg = sanitizeMsg(msg);
     const pc = player.charId ? this.pcs[player.charId] : null;
@@ -211,7 +268,72 @@ class Room {
       case 'buy': return this.doBuy(player, pc, msg.item);
       case 'act': return this.doCombatAction(player, pc, msg);
       case 'restart': return this.restartAdventure(player);
+      case 'music': return this.doMusic(player, msg);
       default: throw new Error('Acción desconocida');
+    }
+  }
+
+  musicPos() {
+    const m = this.music;
+    return m.playing ? m.pos + (Date.now() - m.at) / 1000 : m.pos;
+  }
+
+  doMusic(player, msg) {
+    if (player.id !== this.hostId) throw new Error('Solo el anfitrión controla la música');
+    const m = this.music;
+    const now = Date.now();
+    const validIndex = () => {
+      if (!Number.isInteger(msg.index) || msg.index < 0 || msg.index >= m.queue.length) throw new Error('Pista no válida');
+      return msg.index;
+    };
+    const goto = (i) => { m.index = i; m.pos = 0; m.at = now; m.playing = true; };
+    switch (msg.op) {
+      case 'add': {
+        const id = youtubeId(msg.text);
+        if (!id) throw new Error('Pega el enlace de un vídeo de YouTube');
+        if (m.queue.length >= 20) throw new Error('La lista de música está llena');
+        m.queue.push(id);
+        m.names.push(trackName(msg.label));
+        if (m.queue.length === 1) goto(0);
+        break;
+      }
+      case 'rename': m.names[validIndex()] = trackName(msg.label); break;
+      case 'play': case 'pause': {
+        if (!m.queue.length) break;
+        const play = msg.op === 'play';
+        if (play === m.playing) break;
+        m.pos = this.musicPos();
+        m.at = now;
+        m.playing = play;
+        break;
+      }
+      case 'seek':
+        if (typeof msg.pos !== 'number' || msg.pos < 0 || msg.pos > 86400) throw new Error('Posición no válida');
+        if (!m.queue.length) break;
+        m.pos = msg.pos;
+        m.at = now;
+        break;
+      case 'next':
+        if (!m.queue.length) break;
+        if (m.index + 1 < m.queue.length) goto(m.index + 1);
+        else { m.playing = false; m.pos = 0; m.at = now; }
+        break;
+      case 'prev':
+        if (!m.queue.length) break;
+        goto(Math.max(0, m.index - 1));
+        break;
+      case 'jump': goto(validIndex()); break;
+      case 'remove': {
+        const i = validIndex();
+        m.queue.splice(i, 1);
+        m.names.splice(i, 1);
+        if (!m.queue.length) { m.index = 0; m.playing = false; m.pos = 0; m.at = now; }
+        else if (i < m.index) m.index--;
+        else if (i === m.index) { if (m.index >= m.queue.length) m.index = m.queue.length - 1; m.pos = 0; m.at = now; }
+        break;
+      }
+      case 'clear': this.music = { queue: [], names: [], index: 0, playing: false, pos: 0, at: now }; break;
+      default: throw new Error('Acción de música desconocida');
     }
   }
 
@@ -226,7 +348,7 @@ class Room {
       else if (/\s(dis|desventaja|d)$/i.test(expr)) { mode = 'dis'; expr = expr.replace(/\s\S+$/, ''); }
       return this.doFreeRoll(player, pc, { expr, mode });
     }
-    this.addChat({ kind: 'msg', author: player.name, char: pc ? pc.name : null, color: pc ? C.TEMPLATES[pc.templateId].color : null, text });
+    this.addChat({ kind: 'msg', author: player.name, char: pc ? pc.name : null, color: pc ? C.tplOf(pc).color : null, text });
   }
 
   doFreeRoll(player, pc, { expr, mode = 'normal', label, sheet }) {
@@ -252,14 +374,14 @@ class Room {
       if (/^1?d20/i.test(result.expr)) result.natural = result.rolls[0].results[0];
     }
     this.addChat({
-      kind: 'roll', author: player.name, char: pc ? pc.name : null, color: pc ? C.TEMPLATES[pc.templateId].color : null,
+      kind: 'roll', author: player.name, char: pc ? pc.name : null, color: pc ? C.tplOf(pc).color : null,
       label: lbl ? String(lbl).slice(0, 60) : null, expr, total: result.total, detail: result.detail,
       crit: result.natural === 20, fumble: result.natural === 1,
     });
   }
 
   pickCharacter(player, charId) {
-    const tpl = Object.prototype.hasOwnProperty.call(C.TEMPLATES, charId) ? C.TEMPLATES[charId] : null;
+    const tpl = own(C.TEMPLATES, charId);
     if (!tpl || (tpl.custom && tpl.room !== this.code)) throw new Error('Personaje desconocido');
     if (this.combat) throw new Error('No puedes cambiar de personaje durante un combate');
     const takenBy = Object.values(this.players).find((p) => p.charId === charId && p.id !== player.id);
@@ -293,7 +415,8 @@ class Room {
   createCharacter(player, spec) {
     if (this.combat) throw new Error('No puedes crear un personaje durante un combate');
     if (this.customIds.length >= 12) throw new Error('Esta sala ya tiene demasiados personajes creados');
-    const id = `c_${this.code}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    let id;
+    do id = `c_${this.code}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`; while (C.TEMPLATES[id]); // sin repetir nunca un id existente
     const t = C.buildTemplate(spec, id);
     t.room = this.code;
     t.creator = player.id;
@@ -327,21 +450,23 @@ class Room {
     if (this.phase !== 'lobby') throw new Error('La aventura ya ha comenzado');
     if (!this.partyPCs().length) throw new Error('Elegid al menos un personaje');
     this.phase = 'adventure';
-    this.flags = {}; this.flagOrder = []; this.retries = {}; this.rewarded = {};
+    this.resetRun();
     for (const [k, v] of Object.entries(this.adv.startFlags || {})) this.setFlag(k, v);
     this.addLog('narration', `— ${this.adv.title} —`, { title: true });
     if (this.adv.startGold) { this.party.gold = this.adv.startGold * this.partyPCs().length; this.addLog('loot', `💰 El grupo empieza con ${this.party.gold} po.`); }
     this.enterScene(this.adv.start);
   }
 
+  /** Borra el progreso de la historia (marcas, derrotas y recompensas cobradas) */
+  resetRun() {
+    this.flags = {}; this.flagOrder = []; this.retries = {}; this.rewarded = {};
+  }
+
   restartAdventure(player) {
     if (player.id !== this.hostId) throw new Error('Solo el anfitrión puede reiniciar');
     this.destroy();
     this.combat = null;
-    this.flags = {};
-    this.flagOrder = [];
-    this.retries = {};
-    this.rewarded = {};
+    this.resetRun();
     this.party = { gold: 0, loot: {} };
     for (const id of Object.keys(this.pcs)) {
       const owner = this.pcs[id].owner;
@@ -379,7 +504,6 @@ class Room {
     for (const p of this.sceneTexts(def.text)) this.addLog('narration', p);
     if (def.trap && !this.flags[def.trap.unless]) this.runTrap(def.trap);
     // Las recompensas de escena se cobran una sola vez por aventura (ni al volver ni al repetir tras una derrota).
-    this.rewarded = this.rewarded || {};
     if (def.reward && !this.rewarded[id]) {
       this.rewarded[id] = true;
       if (def.reward.gold) { const g = def.reward.gold * this.partyPCs().length; this.party.gold += g; this.addLog('loot', `Recompensa: ${g} po para el grupo.`, { fx: { kind: 'gold', amount: g } }); }
@@ -479,7 +603,7 @@ class Room {
       success = true;
       this.addLog('action', `${pc.name}: ${c.label}`);
     } else if (c.mode === 'group') {
-      const pcs = this.activePCs().filter((p) => p.hp > 0);
+      const pcs = this.standingPCs();
       let ok = 0;
       const parts = [];
       for (const p of pcs) {
@@ -543,7 +667,7 @@ class Room {
       }
     }
     if (out.damageAll) {
-      for (const p of this.activePCs().filter((x) => x.hp > 0)) {
+      for (const p of this.standingPCs()) {
         const d = roll(out.damageAll.expr);
         this.addLog('damage', `${p.name} sufre ${d.total} de daño ${out.damageAll.type}.`);
         this.damagePC(p, d.total, { type: out.damageAll.type });
@@ -551,11 +675,13 @@ class Room {
     }
     if (out.peaceful) this.resolvePeacefully();
     if (out.startCombat && this.encounterPending() && !this.combat) this.startCombat((combat || def.combat));
-    if (out.goto) {
-      const to = this.txt(out.goto);
-      this.scene.restarting = true; // oculta opciones mientras se cambia de escena
-      this.schedule(() => this.enterScene(to), this.delay ? 1200 : 0);
-    }
+    if (out.goto) this.gotoScene(this.txt(out.goto), 1200);
+  }
+
+  /** Cambia de escena tras una pausa (ms, solo con retardo activo); mientras tanto se ocultan las opciones. */
+  gotoScene(to, ms) {
+    this.scene.restarting = true;
+    this.schedule(() => this.enterScene(to), this.delay ? ms : 0);
   }
 
   pcCheck(pc, c) {
@@ -651,7 +777,7 @@ class Room {
     this.scene.restUsed = true;
     this.addLog('narration', `${player.name} propone un descanso corto. El grupo se sienta una hora a vendarse las heridas y recuperar fuerzas.`);
     for (const pc of this.activePCs()) {
-      const t = C.TEMPLATES[pc.templateId];
+      const t = C.tplOf(pc);
       const parts = [];
       if (pc.hp <= 0) { pc.hp = 1; pc.stable = false; pc.deathSaves = { s: 0, f: 0 }; delete pc.conditions.unconscious; parts.push('recupera el sentido (1 PG)'); }
       while (pc.hp < pc.maxHp * 0.75 && pc.hitDice > 0) {
@@ -714,7 +840,7 @@ class Room {
 
   // ---------------------------------------------------------------- vista para el cliente
   pcView(pc) {
-    const t = C.TEMPLATES[pc.templateId];
+    const t = C.tplOf(pc);
     const st = C.spellStats(pc);
     const owner = this.ownerOf(pc);
     const feats = [];
@@ -733,7 +859,7 @@ class Room {
       weapons: C.weaponAttacks(pc),
       spellcasting: st ? {
         ...st, abilityName: ABILITIES[st.ability].name,
-        slots: Object.entries(C.maxSlots(pc)).map(([l, m]) => ({ level: +l, cur: pc.slots[l] || 0, max: m })).concat(Object.entries(pc.slots).filter(([l, n]) => n > 0 && !C.maxSlots(pc)[l]).map(([l, n]) => ({ level: +l, cur: n, max: 0 }))),
+        slots: slotsView(pc),
         spells: C.knownSpells(pc).map((s) => ({ id: s, name: SPELLS[s].name, level: SPELLS[s].level, desc: SPELLS[s].desc, conc: !!SPELLS[s].conc, ritual: !!SPELLS[s].ritual, time: SPELLS[s].time, free: pc.uses[`free_${s}`] > 0 })),
       } : null,
       features: feats,
@@ -750,28 +876,30 @@ class Room {
     const me = this.players[pid];
     const myPc = me && me.charId ? this.pcs[me.charId] : null;
     const def = this.sceneDef();
+    const takenBy = new Map(); // personaje -> primer jugador que lo controla
+    for (const p of Object.values(this.players)) if (p.charId && !takenBy.has(p.charId)) takenBy.set(p.charId, p);
     const v = {
       code: this.code, phase: this.phase, hostId: this.hostId,
       you: me ? { id: me.id, name: me.name, charId: me.charId, isHost: me.id === this.hostId } : null,
       players: Object.values(this.players).map((p) => ({ id: p.id, name: p.name, charId: p.charId, connected: p.connected, isHost: p.id === this.hostId })),
       catalog: Object.values(C.TEMPLATES).filter((t) => !t.custom || t.room === this.code).map((t) => {
-        const taken = Object.values(this.players).find((p) => p.charId === t.id);
-        const pre = C.createPC(t.id);
+        const taken = takenBy.get(t.id);
+        const l1 = level1Stats(t);
         return {
-          id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, role: t.role, stats: t.stats, hp: pre.maxHp, ac: C.armorClass(pre),
+          id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, role: t.role, stats: t.stats, hp: l1.hp, ac: l1.ac,
           takenBy: taken ? taken.name : null, takenById: taken ? taken.id : null, custom: !!t.custom, mine: !!(t.custom && t.creator === pid),
         };
       }),
-      adventure: { id: this.advId, title: this.adv.title, summary: this.adv.summary, art: this.adv.art || 'tavern', length: this.adv.length || '', endings: this.adv.endingCount || 0, tags: this.adv.tags || [] },
-      adventures: Object.values(ADVENTURES).map((a) => ({ id: a.id, title: a.title, summary: a.summary, art: a.art || 'tavern', length: a.length || '', endings: a.endingCount || 0, tags: a.tags || [] })),
+      adventure: ADVENTURE_INFO[this.advId],
+      adventures: Object.values(ADVENTURE_INFO),
       journal: this.phase === 'lobby' ? [] : this.flagOrder.filter((k) => this.flags[k] && this.adv.journal && this.adv.journal[k]).map((k) => this.txt(this.adv.journal[k])),
       pcs: this.partyPCs().map((p) => this.pcView(p)),
       party: { gold: this.party.gold, loot: Object.entries(this.party.loot).map(([id, n]) => ({ id, name: ITEMS[id].name, qty: n, desc: ITEMS[id].desc })) },
       log: this.log.slice(-200),
       chat: this.chat.slice(-120),
+      music: { queue: this.music.queue.slice(), names: this.music.names.slice(), index: this.music.index, playing: this.music.playing, pos: Math.round(Math.min(this.musicPos(), 86400) * 10) / 10 },
     };
     if (def && this.phase !== 'lobby') {
-      const voters = Object.values(this.players).filter((p) => p.charId && this.pcs[p.charId] && p.connected);
       const n = this.partyPCs().length;
       v.scene = {
         id: this.sceneId, title: this.txt(def.title), end: !!def.end, art: this.txt(def.art) || this.sceneId, ending: def.end && def.ending ? def.ending : null,
@@ -788,7 +916,7 @@ class Room {
           votes: Object.entries(this.scene.votes).filter(([, x]) => x === i).map(([p]) => this.players[p] && this.players[p].name).filter(Boolean),
           myVote: me ? this.scene.votes[me.id] === i : false,
         })),
-        voters: voters.length,
+        voters: this.voters().length,
         shortRest: !!def.shortRest && !this.scene.restUsed && !this.combat && !this.encounterPending() && !this.scene.restarting,
         shop: def.shop && !this.combat ? Object.entries(def.shop).map(([id, price]) => ({ id, name: ITEMS[id].name, price, desc: ITEMS[id].desc })) : null,
       };

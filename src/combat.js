@@ -1,23 +1,23 @@
 // Combate por turnos, conjuros y acciones de los personajes (reglas de 2024, SRD 5.2.1).
 // Son métodos de Room (engine.js): se añaden a su prototipo con Object.assign.
 const { roll, d20, combineMode, critExpr } = require('./dice');
-const { mod, fmtMod, profBonus, XP_BY_CR, ABILITIES } = require('./rules');
+const { mod, fmtMod, profBonus, XP_BY_CR, ABILITIES, PHYSICAL } = require('./rules');
 const C = require('./character');
 const SPELLS = require('./data/spells');
-const ITEMS = require('./data/items');
 const MONSTERS = require('./data/monsters');
-const FEATURES = require('./data/features');
 const CONDITIONS = require('./data/conditions');
 const BEASTS = require('./data/beasts');
-const CLASSES = require('./data/classes');
 
-const tpl = (pc) => C.TEMPLATES[pc.templateId];
+const tpl = C.tplOf;
+const condName = (k) => (CONDITIONS[k] ? CONDITIONS[k].name : k);
+// cargas que le quedan a un ataque limitado de un monstruo
+const charges = (e, a, i) => e.uses[i] ?? (a.uses || 1);
+const byHurt = (a, b) => a.hp / a.maxHp - b.hp / b.maxHp; // para ordenar: el más herido primero
 const PROTECT_TYPES = ['aberración', 'celestial', 'elemental', 'feérico', 'infernal', 'muerto viviente'];
 // estados que impiden actuar
 const NO_ACTION = ['paralyzed', 'unconscious', 'stunned', 'incapacitated', 'laughing', 'drowsy', 'turned', 'commanded', 'charmed'];
 const isIncap = (c) => NO_ACTION.some((k) => c.conditions[k]);
 const CANTRIP_SCALE = (lvl) => (lvl >= 17 ? 4 : lvl >= 11 ? 3 : lvl >= 5 ? 2 : 1);
-const PHYSICAL = ['contundente', 'cortante', 'perforante'];
 
 /** Tira el daño. gwf: los 1 y 2 de los dados del arma cuentan como 3 (Combate con armas a dos manos). */
 function rollDmg(expr, { crit = false, gwf = false } = {}) {
@@ -59,7 +59,7 @@ module.exports = {
     const n = this.activePCs().length;
     let types = spec.enemies(n, this.flags);
     // Regla de la casa contra la frustración: cada derrota repetida en la misma escena debilita el encuentro.
-    const retry = (this.retries && this.retries[this.sceneId]) || 0;
+    const retry = this.retries[this.sceneId] || 0;
     if (retry >= 1 && types.length > 1) types = types.slice(0, Math.max(1, types.length - retry));
     const counts = {};
     const enemies = {};
@@ -159,7 +159,7 @@ module.exports = {
     for (const [k, v] of Object.entries(c.conditions)) {
       if (!v || !v.dot || !v.dot.start || c.dead) continue;
       const d = roll(v.dot.dmg);
-      this.addLog('damage', `${c.name} sufre ${d.total} de daño ${v.dot.type} (${CONDITIONS[k] ? CONDITIONS[k].name : k}: ${d.detail}).`);
+      this.addLog('damage', `${c.name} sufre ${d.total} de daño ${v.dot.type} (${condName(k)}: ${d.detail}).`);
       this.applyDamage(c, d.total, { type: v.dot.type, silentBreak: true });
       if (v.dot.save && c.conditions[k] && !c.dead) {
         const s = this.saveFor(c, v.dot.save, v.dot.dc);
@@ -167,7 +167,7 @@ module.exports = {
         if (s.success) delete c.conditions[k];
       }
     }
-    if (c.dead || (this.isPC(c) && c.hp <= 0 && !c.conditions.unconscious && c.dead)) return this.endTurn(true);
+    if (c.dead) return this.endTurn(true);
     if (this.checkCombatEnd()) return;
     // Hedor (ghast): quien empieza su turno junto a él
     if (this.isPC(c) && c.hp > 0) {
@@ -194,7 +194,7 @@ module.exports = {
       }
       if (isIncap(c)) {
         const k = NO_ACTION.find((x) => c.conditions[x]);
-        this.addLog('combat', `${c.name} está ${(CONDITIONS[k] ? CONDITIONS[k].name : k).toLowerCase()} y no puede actuar.`);
+        this.addLog('combat', `${c.name} está ${condName(k).toLowerCase()} y no puede actuar.`);
         return this.schedule(() => this.endTurn(), Math.min(this.delay, 600));
       }
       this.addLog('turn', `Turno de ${c.name}.`, { who: c.id, fx: { kind: 'turn', who: c.id } });
@@ -260,7 +260,7 @@ module.exports = {
         }
         if (v.saveEnds) {
           const s = this.saveFor(c, v.saveEnds.save, v.saveEnds.dc, { spell: !!v.conc });
-          this.addLog('roll', `${c.name} intenta librarse de ${(CONDITIONS[k] ? CONDITIONS[k].name : k).toLowerCase()}: ${s.text} → ${s.success ? 'se libera' : 'no lo consigue'}.`, { success: s.success });
+          this.addLog('roll', `${c.name} intenta librarse de ${condName(k).toLowerCase()}: ${s.text} → ${s.success ? 'se libera' : 'no lo consigue'}.`, { success: s.success });
           if (s.success) { delete c.conditions[k]; if (k === 'laughing') delete c.conditions.prone; continue; }
         }
         if (v.dot && v.dot.end && v.dot.keep) {
@@ -269,7 +269,7 @@ module.exports = {
           const d = roll(v.dot.dmg);
           const s = this.saveFor(c, v.dot.save, v.dot.dc, { spell: true });
           const amt = s.success ? Math.floor(d.total / 2) : d.total;
-          this.addLog('damage', `${c.name} termina su turno en ${(CONDITIONS[k] ? CONDITIONS[k].name : k).toLowerCase()}: salvación de ${ABILITIES[v.dot.save].name} ${s.text} → ${amt} de daño ${v.dot.type} (${d.detail}).`, { success: !s.success });
+          this.addLog('damage', `${c.name} termina su turno en ${condName(k).toLowerCase()}: salvación de ${ABILITIES[v.dot.save].name} ${s.text} → ${amt} de daño ${v.dot.type} (${d.detail}).`, { success: !s.success });
           this.applyDamage(c, amt, { type: v.dot.type, attacker: this.pcs[v.conc] });
           if (c.dead) break;
           continue;
@@ -334,7 +334,7 @@ module.exports = {
     this.scene.combatDone = true;
     for (const pc of this.partyPCs()) this.cleanupAfterCombat(pc);
     this.addLog('combat', '🏁 ¡Victoria!', { fx: { kind: 'victory' } });
-    if (this.retries) delete this.retries[this.sceneId];
+    delete this.retries[this.sceneId];
     const v = def.combat.victory;
     if (v.text) this.addLog('narration', this.txt(v.text));
     for (const f of v.flags || []) this.setFlag(f, true);
@@ -357,17 +357,13 @@ module.exports = {
     for (const pc of pcs) this.giveXp(pc, each);
     if (v.gold) { const g = v.gold * Math.max(1, pcs.length); this.party.gold += g; this.addLog('loot', `+${g} po para el grupo.`); }
     if (v.items) this.addLoot(v.items);
-    if (v.goto) {
-      const to = this.txt(v.goto);
-      this.scene.restarting = true;
-      this.schedule(() => this.enterScene(to), this.delay ? 1800 : 0);
-    }
+    if (v.goto) this.gotoScene(this.txt(v.goto), 1800);
   },
 
   defeat() {
     const spec = this.sceneDef().combat || {};
+    this.addLog('combat', '💀 Todo el grupo ha caído...', { fx: { kind: 'defeat' } });
     if (spec.defeat && spec.defeat.to) {
-      this.addLog('combat', '💀 Todo el grupo ha caído...', { fx: { kind: 'defeat' } });
       if (spec.defeat.text) this.addLog('narration', this.txt(spec.defeat.text));
       this.combat = null;
       this.scene.combatDone = true;
@@ -377,13 +373,8 @@ module.exports = {
         for (const k of Object.keys(pc.conditions)) delete pc.conditions[k];
       }
       for (const f of spec.defeat.flags || []) this.setFlag(f, true);
-      const to = this.txt(spec.defeat.to);
-      this.scene.restarting = true;
-      this.schedule(() => this.enterScene(to), this.delay ? 2500 : 0);
-      return;
+      return this.gotoScene(this.txt(spec.defeat.to), 2500);
     }
-    this.addLog('combat', '💀 Todo el grupo ha caído...', { fx: { kind: 'defeat' } });
-    this.retries = this.retries || {};
     this.retries[this.sceneId] = (this.retries[this.sceneId] || 0) + 1;
     this.addLog('narration', 'La oscuridad os envuelve. Pero esta no es la forma en que termina vuestra historia: el tiempo parece retroceder y volvéis a estar al principio de esta escena, con la lección aprendida.');
     const cp = JSON.parse(JSON.stringify(this.scene.checkpoint));
@@ -395,9 +386,7 @@ module.exports = {
     this.flags = cp.flags;
     this.flagOrder = cp.flagOrder || Object.keys(cp.flags);
     this.combat = null;
-    const id = this.sceneId;
-    this.scene.restarting = true;
-    this.schedule(() => this.enterScene(id), this.delay ? 2500 : 0);
+    this.gotoScene(this.sceneId, 2500);
   },
 
   // ================================================================ tiradas
@@ -495,20 +484,13 @@ module.exports = {
   },
 
   // ================================================================ ataques y daño
-  /**
-   * Ataque genérico. attacker y target pueden ser PJ o monstruo.
-   * opts: bonus, dmg, dmgType, ranged, label, critOn, isSpell, spellCls, weapon (ataque de PJ con arma),
-   *       sneak, extraOnHit [{label, dmg, type}], onHit(target, info), onMiss(target), gwf, noMod (daño sin modificador)
-   */
-  resolveAttack(attacker, target, opts) {
-    const { bonus: baseBonus, dmg, dmgType, ranged = false, label, critOn = 20, isSpell = false, weapon = null, onHit, onMiss } = opts;
+  /** Ventaja o desventaja de un ataque según los estados de ambos (consume los de un solo uso). Devuelve { mode, why }. */
+  attackMode(attacker, target, opts, ranged) {
+    const { isSpell = false, weapon = null } = opts;
     const atkPC = this.isPC(attacker);
-    const bonus = baseBonus - (atkPC ? 2 * (attacker.exhaustion || 0) : 0);
     const tgtPC = this.isPC(target);
     const tc = target.conditions;
     const ac = attacker.conditions;
-    const ts = this.combat ? this.combat.turnState : { once: {} };
-    const melee = !ranged;
     let adv = false;
     let dis = false;
     const why = [];
@@ -550,7 +532,24 @@ module.exports = {
       if (b.packTactics && this.activePCs().some((p) => p.id !== attacker.id && p.hp > 0)) A('atacar en manada');
       if (b.bloodiedFury && attacker.hp <= attacker.maxHp / 2) A('furia maltrecha');
     }
-    const mode = combineMode(adv, dis);
+    return { mode: combineMode(adv, dis), why };
+  },
+
+  /**
+   * Ataque genérico. attacker y target pueden ser PJ o monstruo.
+   * opts: bonus, dmg, dmgType, ranged, label, critOn, isSpell, spellCls, weapon (ataque de PJ con arma),
+   *       sneak, extraOnHit [{label, dmg, type}], onHit(target, info), onMiss(target), gwf, noMod (daño sin modificador)
+   */
+  resolveAttack(attacker, target, opts) {
+    const { bonus: baseBonus, dmg, dmgType, ranged = false, label, critOn = 20, isSpell = false, weapon = null, onHit, onMiss } = opts;
+    const atkPC = this.isPC(attacker);
+    const bonus = baseBonus - (atkPC ? 2 * (attacker.exhaustion || 0) : 0);
+    const tgtPC = this.isPC(target);
+    const tc = target.conditions;
+    const ac = attacker.conditions;
+    const ts = this.combat ? this.combat.turnState : { once: {} };
+    const melee = !ranged;
+    const { mode, why } = this.attackMode(attacker, target, opts, ranged);
     const r = this.d20For(attacker, mode);
     let nat = r.natural;
     let total = nat + bonus;
@@ -682,7 +681,7 @@ module.exports = {
       }
     }
     for (const p of parts) if (!target.dead && p.amount > 0) this.applyDamage(target, p.amount, { type: p.type, crit, attacker });
-    if (atkPC && weapon && target && !target.dead) this.weaponOnHit(attacker, target, weapon, crit);
+    if (atkPC && weapon && target && !target.dead) this.weaponOnHit(attacker, target, weapon);
     if (onHit && !target.dead && !(tgtPC && target.hp <= 0)) onHit(target, { crit });
     if (atkPC && weapon) ts.lastHit = { targetId: target.id, melee: weapon.melee, crit, weapon: weapon.idx };
     // reacciones al recibir daño
@@ -691,7 +690,7 @@ module.exports = {
   },
 
   /** Efectos al acertar con un arma: maestrías y linaje de las colinas */
-  weaponOnHit(pc, target, w, crit) {
+  weaponOnHit(pc, target, w) {
     const ts = this.combat.turnState;
     const isMon = !this.isPC(target);
     if (w.mastery === 'sap') { target.conditions.sapped = { untilStartOf: pc.id }; this.addLog('combat', `Debilitar: ${target.name} tendrá desventaja en su próximo ataque.`); }
@@ -704,12 +703,10 @@ module.exports = {
     if (w.mastery === 'slow' && isMon) this.addLog('combat', `Ralentizar: la velocidad de ${target.name} se reduce en 3 m.`);
     if (w.mastery === 'cleave' && w.melee && !ts.once.cleave && this.livingEnemies().length > 1) ts.cleaveReady = w.idx;
     if (w.prone && !target.conditions.prone && !this.immuneTo(target, 'prone')) { target.conditions.prone = {}; this.addLog('combat', `${target.name} queda derribado.`); }
-    if (w.charge && !ts.once.charge) { /* el jabalí embiste: lo aplica la acción */ }
     if (tpl(pc).giant === 'hill' && !ts.once.giant && pc.uses.giant > 0 && !target.conditions.prone && !this.immuneTo(target, 'prone')) {
       ts.once.giant = true; pc.uses.giant -= 1; target.conditions.prone = {};
       this.addLog('combat', `⛰️ Caída de las colinas: ${pc.name} derriba a ${target.name}.`);
     }
-    void crit;
   },
 
   /** Reacciones de un PJ cuando un monstruo le hace daño */
@@ -753,7 +750,7 @@ module.exports = {
     this.fxPush({ kind: 'dmg', target: target.id, amount: a, crit: !!opts.crit });
     // estados que terminan al recibir daño
     for (const [k, v] of Object.entries(target.conditions)) {
-      if (v && v.breakOnDamage) { delete target.conditions[k]; if (!opts.silentBreak) this.addLog('combat', `${target.name} ${k === 'unconscious' ? 'se despierta de golpe' : `deja de estar ${(CONDITIONS[k] ? CONDITIONS[k].name : k).toLowerCase()}`}.`); }
+      if (v && v.breakOnDamage) { delete target.conditions[k]; if (!opts.silentBreak) this.addLog('combat', `${target.name} ${k === 'unconscious' ? 'se despierta de golpe' : `deja de estar ${condName(k).toLowerCase()}`}.`); }
     }
     if (target.conditions.laughing && target.hp > 0) {
       const v = target.conditions.laughing;
@@ -913,7 +910,7 @@ module.exports = {
   /** Aplica un estado si el objetivo no es inmune; devuelve true si se aplicó */
   setCond(c, key, val = {}, quiet = false) {
     if (this.immuneTo(c, key)) {
-      if (!quiet) this.addLog('combat', `${c.name} es inmune a quedar ${(CONDITIONS[key] ? CONDITIONS[key].name : key).toLowerCase()}.`);
+      if (!quiet) this.addLog('combat', `${c.name} es inmune a quedar ${condName(key).toLowerCase()}.`);
       return false;
     }
     c.conditions[key] = val;
@@ -937,7 +934,6 @@ module.exports = {
       return this.endTurn();
     }
     e.uses = e.uses || {};
-    const alive = () => this.activePCs().filter((p) => p.hp > 0 && !p.dead);
     // Estirge enganchada: sigue chupando sangre
     if (e.attached) {
       const t = this.pcs[e.attached];
@@ -955,7 +951,7 @@ module.exports = {
     m.attacks.forEach((a, i) => { if (a.recharge && e.uses[i] === 0 && roll('1d6').total >= a.recharge) { e.uses[i] = 1; this.addLog('combat', `${e.name} recupera su ${a.name.toLowerCase()}.`); } });
     // Auxilio divino: cura a un aliado malherido (acción adicional)
     if (m.healAlly && (e.uses.heal ?? m.healAlly.uses) > 0) {
-      const hurt = this.livingEnemies().filter((o) => o.hp <= o.maxHp / 2).sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp)[0];
+      const hurt = this.livingEnemies().filter((o) => o.hp <= o.maxHp / 2).sort(byHurt)[0];
       if (hurt) {
         e.uses.heal = (e.uses.heal ?? m.healAlly.uses) - 1;
         const r = roll(m.healAlly.dmg);
@@ -964,13 +960,13 @@ module.exports = {
       }
     }
     const pick = () => {
-      let ts = alive();
+      let ts = this.standingPCs();
       if (!ts.length) return null;
       const visible = ts.filter((p) => !p.conditions.invisible);
       if (visible.length) ts = visible;
       const grab = ts.find((p) => p.conditions.grappled && p.conditions.grappled.by === e.id);
       if (grab) return grab;
-      if (Math.random() < 0.5) return ts.slice().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+      if (Math.random() < 0.5) return ts.slice().sort(byHurt)[0];
       return ts[Math.floor(Math.random() * ts.length)];
     };
     /** Santuario: hay que superar una salvación de Sabiduría para atacar al protegido */
@@ -979,7 +975,7 @@ module.exports = {
       if (!s) return t;
       const sv = this.monsterSave(e, 'wis', s.dc, { spell: true });
       if (sv.success) { this.addLog('roll', `${e.name} supera el Santuario de ${t.name} (${sv.text}).`, { success: false }); return t; }
-      const other = alive().filter((p) => p.id !== t.id && !p.conditions.sanctuary);
+      const other = this.standingPCs().filter((p) => p.id !== t.id && !p.conditions.sanctuary);
       this.addLog('roll', `${e.name} no se atreve a atacar a ${t.name} (Santuario: ${sv.text})${other.length ? '' : ' y pierde el ataque'}.`, { success: true });
       return other.length ? other[Math.floor(Math.random() * other.length)] : null;
     };
@@ -989,30 +985,8 @@ module.exports = {
     const meleeIdx = Math.max(0, idxOf((a) => !a.ranged && !a.uses && !a.area));
     const rangedIdx = idxOf((a) => a.ranged && !a.uses && !a.area);
     // acción con salvación (aliento, telaraña, conjuro) si está disponible
-    const charges = (a, i) => e.uses[i] ?? (a.uses || 1);
-    const areaIdx = idxOf((a, i) => a.area && charges(a, i) > 0);
-    if (areaIdx >= 0) {
-      const a = m.attacks[areaIdx];
-      const ar = a.area;
-      const cands = alive().filter((p) => !(ar.cond && p.conditions[ar.cond.key]));
-      const want = ar.dmg ? (alive().length >= 2 || Math.random() < 0.4) : (cands.length && Math.random() < 0.5);
-      if (cands.length && want) {
-        e.uses[areaIdx] = a.recharge ? 0 : charges(a, areaIdx) - 1;
-        const tg = cands.sort(() => Math.random() - 0.5).slice(0, ar.targets || 3);
-        const d = ar.dmg ? roll(ar.dmg) : null;
-        this.addLog('attack', `${ar.dmg ? '🐲' : '✴️'} ${e.name} usa ${a.name}${d ? ` (${d.detail})` : ''}.`, { fx: { kind: 'spell', who: e.id, dmgType: ar.type || null } });
-        for (const p of tg) {
-          const sv = this.pcSave(p, ar.save, ar.dc, { charm: ar.cond && ar.cond.key === 'charmed', spell: !!ar.cond });
-          const amt = d ? (sv.success ? (ar.half ? Math.floor(d.total / 2) : 0) : d.total) : 0;
-          const cn = ar.cond && CONDITIONS[ar.cond.key] ? CONDITIONS[ar.cond.key].name.toLowerCase() : null;
-          this.addLog('roll', `${p.name}: salvación de ${ABILITIES[ar.save].name} ${sv.text} → ${[d ? `${amt} de daño ${ar.type}` : null, !sv.success && cn ? `queda ${cn}` : null].filter(Boolean).join(' y ') || 'se libra'}.`, { success: sv.success });
-          if (amt > 0) this.applyDamage(p, amt, { type: ar.type, attacker: e });
-          if (!sv.success && ar.drain && amt > 0 && !p.dead) this.drainMax(p, amt);
-          if (!sv.success && ar.cond && !p.dead && p.hp > 0) this.setCond(p, ar.cond.key, this.monsterCond(e, p, ar.cond, ar.dc));
-        }
-        return this.endTurn();
-      }
-    }
+    const areaIdx = idxOf((a, i) => a.area && charges(e, a, i) > 0);
+    if (areaIdx >= 0 && this.monsterArea(e, areaIdx)) return this.endTurn();
     let plan;
     const special = idxOf((a, i) => a.uses && !a.area && (e.uses[i] ?? a.uses) > 0);
     if (special >= 0 && Math.random() < 0.45) {
@@ -1050,6 +1024,29 @@ module.exports = {
       }
     }
     this.endTurn();
+  },
+
+  /** Ataque con salvación en área (aliento, telaraña, conjuro): lo usa si le conviene. Devuelve true si lo ha usado. */
+  monsterArea(e, i) {
+    const a = MONSTERS[e.type].attacks[i];
+    const ar = a.area;
+    const cands = this.standingPCs().filter((p) => !(ar.cond && p.conditions[ar.cond.key]));
+    const want = ar.dmg ? (this.standingPCs().length >= 2 || Math.random() < 0.4) : (cands.length && Math.random() < 0.5);
+    if (!cands.length || !want) return false;
+    e.uses[i] = a.recharge ? 0 : charges(e, a, i) - 1;
+    const tg = cands.sort(() => Math.random() - 0.5).slice(0, ar.targets || 3);
+    const d = ar.dmg ? roll(ar.dmg) : null;
+    this.addLog('attack', `${ar.dmg ? '🐲' : '✴️'} ${e.name} usa ${a.name}${d ? ` (${d.detail})` : ''}.`, { fx: { kind: 'spell', who: e.id, dmgType: ar.type || null } });
+    for (const p of tg) {
+      const sv = this.pcSave(p, ar.save, ar.dc, { charm: ar.cond && ar.cond.key === 'charmed', spell: !!ar.cond });
+      const amt = d ? (sv.success ? (ar.half ? Math.floor(d.total / 2) : 0) : d.total) : 0;
+      const cn = ar.cond && CONDITIONS[ar.cond.key] ? CONDITIONS[ar.cond.key].name.toLowerCase() : null;
+      this.addLog('roll', `${p.name}: salvación de ${ABILITIES[ar.save].name} ${sv.text} → ${[d ? `${amt} de daño ${ar.type}` : null, !sv.success && cn ? `queda ${cn}` : null].filter(Boolean).join(' y ') || 'se libra'}.`, { success: sv.success });
+      if (amt > 0) this.applyDamage(p, amt, { type: ar.type, attacker: e });
+      if (!sv.success && ar.drain && amt > 0 && !p.dead) this.drainMax(p, amt);
+      if (!sv.success && ar.cond && !p.dead && p.hp > 0) this.setCond(p, ar.cond.key, this.monsterCond(e, p, ar.cond, ar.dc));
+    }
+    return true;
   },
 
   /** Estado que causa un monstruo con una salvación (telaraña, orden, parálisis, canción) */
@@ -1115,4 +1112,4 @@ module.exports = {
   },
 };
 // utilidades compartidas con actions.js (no enumerables: no se copian al prototipo de Room)
-Object.defineProperty(module.exports, 'helpers', { value: { rollDmg, addDice, empower, isIncap, NO_ACTION } });
+Object.defineProperty(module.exports, 'helpers', { value: { addDice, empower, byHurt, CANTRIP_SCALE } });

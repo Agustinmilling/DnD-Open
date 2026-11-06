@@ -10,6 +10,10 @@ const ABILITIES = {
 
 const mod = (score) => Math.floor((score - 10) / 2);
 const fmtMod = (n) => (n >= 0 ? `+${n}` : `${n}`);
+// Valor propio de un objeto (un id como "constructor" o "__proto__" no existe) o null
+const own = (obj, key) => (Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : null);
+// Tipos de daño físico (los que resiste la furia)
+const PHYSICAL = ['contundente', 'cortante', 'perforante'];
 
 // Bonificador por competencia según nivel
 const profBonus = (level) => 2 + Math.floor((Math.max(1, level) - 1) / 4);
@@ -27,4 +31,4 @@ function levelForXp(xp) {
 // XP por valor de desafío (CR) según el SRD
 const XP_BY_CR = { '0': 10, '1/8': 25, '1/4': 50, '1/2': 100, '1': 200, '2': 450, '3': 700 };
 
-module.exports = { ABILITIES, mod, fmtMod, profBonus, XP_TABLE, MAX_LEVEL, levelForXp, XP_BY_CR };
+module.exports = { ABILITIES, mod, fmtMod, own, PHYSICAL, profBonus, XP_TABLE, levelForXp, XP_BY_CR };

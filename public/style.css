@@ -661,3 +661,34 @@ mark { background: #e0b35455; color: inherit; border-radius: 2px; }
   .adv-art { width: 110px; height: auto; flex: none; }
   #glossaryMax { display: none; }
 }
+
+/* ---------- música compartida ---------- */
+.music-btn { width: 40px; height: 40px; padding: 0; border-radius: 50%; justify-content: center; font-size: 18px; line-height: 1; }
+.music-btn.pulse { border-color: var(--gold); animation: musicPulse 2s ease-in-out infinite; }
+@keyframes musicPulse { 0%, 100% { box-shadow: 0 0 0 0 #e7b65a00; } 50% { box-shadow: 0 0 0 7px #e7b65a55; } }
+@media (prefers-reduced-motion: reduce) { .music-btn.pulse { animation: none; } }
+.music-panel { position: fixed; top: 58px; right: 16px; width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 70px); overflow-y: auto; z-index: 46; display: flex; flex-direction: column; gap: 10px; padding: 12px; background: linear-gradient(#261d15f8, #1b1510f8); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 24px 60px #000c, 0 0 0 1px #0006; }
+/* Cerrado, el panel se aparta fuera de pantalla en vez de ocultarse: YouTube exige un reproductor visible de al menos
+   200x200, y con display:none o visibility:hidden el audio se detendría. NO cambiar a display:none. */
+.music-panel:not(.open) { top: 0; right: auto; left: -9999px; }
+.music-frame { flex: none; align-self: center; width: 200px; height: 200px; background: #000; border-radius: 10px; overflow: hidden; }
+.music-frame iframe { display: block; width: 200px; height: 200px; }
+.music-body { display: flex; flex-direction: column; gap: 10px; }
+.music-body p { margin: 0; }
+.music-row { display: flex; align-items: center; gap: 6px; margin: 0; }
+.music-row input[type=text], .music-edit { flex: 1; min-width: 0; padding: 7px 9px; font-size: 16px; }
+#musicAdd { flex-wrap: wrap; }
+#musicAdd #musicUrl { flex: 1 1 100%; }
+.music-list .music-edit { padding: 4px 6px; font-size: 16px; }
+.music-row input[type=range], .music-seek { flex: 1; min-width: 0; accent-color: var(--gold); height: 28px; }
+.music-seek { width: 100%; }
+.music-host { display: flex; flex-direction: column; gap: 8px; }
+.music-transport .btn { min-width: 40px; min-height: 36px; justify-content: center; }
+.music-transport #musicClear { margin-left: auto; }
+.music-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.music-list li { display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border-radius: 8px; border: 1px solid transparent; font-size: 14px; }
+.music-list li.current { border-color: var(--gold); background: #e7b65a14; }
+.music-list .music-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-list .btn.small { min-width: 34px; min-height: 34px; justify-content: center; padding: 2px 6px; }
+.music-panel .btn:focus-visible, .music-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.music-panel input[type=range]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

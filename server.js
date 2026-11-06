@@ -34,7 +34,7 @@ function clientIp(req) {
   const xf = req.headers['cf-connecting-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   return xf || req.socket.remoteAddress || '?';
 }
-const SECURITY_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'no-referrer' };
+const SECURITY_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'strict-origin-when-cross-origin' }; // YouTube rechaza el reproductor incrustado si no recibe Referer; a sitios externos solo viaja el origen, no la URL con el código de sala
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 
 function newCode() {
@@ -44,10 +44,20 @@ function newCode() {
   return c;
 }
 
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
 function getRoom(code) {
   const r = rooms.get(String(code || '').toUpperCase());
-  if (!r) { const e = new Error('Esa sala no existe (¿se reinició el servidor?)'); e.status = 404; throw e; }
+  if (!r) throw httpError(404, 'Esa sala no existe (¿se reinició el servidor?)');
   return r;
+}
+
+// Sala + jugador autenticado (404 si no hay sala, 403 si las credenciales no valen)
+function authRoom(code, pid, token) {
+  const room = getRoom(code);
+  const player = room.auth(pid, token);
+  if (!player) throw httpError(403, 'Credenciales no válidas');
+  return { room, player };
 }
 
 function send(res, status, obj) {
@@ -58,8 +68,8 @@ function send(res, status, obj) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 20000) { reject(Object.assign(new Error('Cuerpo demasiado grande'), { status: 413 })); req.destroy(); } });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(Object.assign(new Error('JSON no válido'), { status: 400 })); } });
+    req.on('data', (c) => { data += c; if (data.length > 20000) { reject(httpError(413, 'Cuerpo demasiado grande')); req.destroy(); } });
+    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(httpError(400, 'JSON no válido')); } });
   });
 }
 
@@ -76,7 +86,7 @@ function subscribe(room, pid, res) {
     setImmediate(() => { pending = false; res.write(`data: ${JSON.stringify(room.viewFor(pid))}\n\n`); });
   };
   room.listeners.add(push);
-  const conns = (room.conns = room.conns || {});
+  const conns = room.conns;
   conns[pid] = (conns[pid] || 0) + 1;
   room.setConnected(pid, true);
   push();
@@ -86,7 +96,7 @@ function subscribe(room, pid, res) {
     clearInterval(ping);
     room.listeners.delete(push);
     conns[pid] -= 1;
-    if (conns[pid] <= 0 && !(room.pollSeen || {})[pid]) room.setConnected(pid, false);
+    if (conns[pid] <= 0 && !room.pollSeen[pid]) room.setConnected(pid, false);
   });
 }
 
@@ -94,14 +104,13 @@ function subscribe(room, pid, res) {
 // la respuesta espera hasta 25 s a que cambie. Funciona detrás de cualquier túnel o proxy que retenga SSE.
 const POLL_WAIT = 25000;
 function markPoll(room, pid) {
-  const seen = (room.pollSeen = room.pollSeen || {});
-  seen[pid] = Date.now();
+  room.pollSeen[pid] = Date.now();
   if (room.players[pid] && !room.players[pid].connected) room.setConnected(pid, true);
 }
 function longPoll(room, pid, since, res) {
   markPoll(room, pid);
-  const reply = () => { markPoll(room, pid); send(res, 200, { v: room.version || 0, view: room.viewFor(pid) }); };
-  if ((room.version || 0) !== since) return reply();
+  const reply = () => { markPoll(room, pid); send(res, 200, { v: room.version, view: room.viewFor(pid) }); };
+  if (room.version !== since) return reply();
   let done = false;
   const finish = (withView) => {
     if (done) return; done = true;
@@ -117,8 +126,8 @@ function longPoll(room, pid, since, res) {
 setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    for (const [pid, t] of Object.entries(room.pollSeen || {})) {
-      if (now - t > POLL_WAIT + 15000) { delete room.pollSeen[pid]; if (!((room.conns || {})[pid] > 0)) room.setConnected(pid, false); }
+    for (const [pid, t] of Object.entries(room.pollSeen)) {
+      if (now - t > POLL_WAIT + 15000) { delete room.pollSeen[pid]; if (!(room.conns[pid] > 0)) room.setConnected(pid, false); }
     }
   }
 }, 10000).unref();
@@ -148,30 +157,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { code: room.code, ...room.join(body.name) });
     }
     if (url.pathname === '/api/check') {
-      const room = getRoom(url.searchParams.get('code'));
-      if (!room.auth(url.searchParams.get('pid'), url.searchParams.get('token'))) return send(res, 403, { error: 'Credenciales no válidas' });
+      authRoom(url.searchParams.get('code'), url.searchParams.get('pid'), url.searchParams.get('token'));
       return send(res, 200, { ok: true });
     }
     if (url.pathname === '/api/stream') {
-      const room = getRoom(url.searchParams.get('code'));
-      const p = room.auth(url.searchParams.get('pid'), url.searchParams.get('token'));
-      if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
-      const inRoom = Object.values(room.conns || {}).reduce((a, b) => a + Math.max(0, b), 0);
+      const { room, player: p } = authRoom(url.searchParams.get('code'), url.searchParams.get('pid'), url.searchParams.get('token'));
+      const inRoom = Object.values(room.conns).reduce((a, b) => a + Math.max(0, b), 0);
       if (openStreams >= LIMITS.maxStreams || inRoom >= LIMITS.streamsPerRoom) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
       return subscribe(room, p.id, res);
     }
     if (url.pathname === '/api/poll') {
-      const room = getRoom(url.searchParams.get('code'));
-      const p = room.auth(url.searchParams.get('pid'), url.searchParams.get('token'));
-      if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
+      const { room, player: p } = authRoom(url.searchParams.get('code'), url.searchParams.get('pid'), url.searchParams.get('token'));
       if (openStreams >= LIMITS.maxStreams) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
       return longPoll(room, p.id, Number(url.searchParams.get('v')), res);
     }
     if (url.pathname === '/api/action' && req.method === 'POST') {
       const body = await readBody(req);
-      const room = getRoom(body.code);
-      const p = room.auth(body.pid, body.token);
-      if (!p) return send(res, 403, { error: 'Credenciales no válidas' });
+      const { room, player: p } = authRoom(body.code, body.pid, body.token);
       if (limited(`act:${room.code}:${p.id}`, LIMITS.actionsPerPlayer, 5000)) return send(res, 429, { error: 'Vas demasiado rápido' });
       try {
         room.handle(p.id, body.msg || {});
