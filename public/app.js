@@ -9,7 +9,7 @@
   const ABIL = { str: 'FUE', dex: 'DES', con: 'CON', int: 'INT', wis: 'SAB', cha: 'CAR' };
   const ABIL_FULL = { str: 'Fuerza', dex: 'Destreza', con: 'Constitución', int: 'Inteligencia', wis: 'Sabiduría', cha: 'Carisma' };
   const COST = { action: 'Acción', bonus: 'Adicional', free: 'Gratis', reaction: 'Reacción' };
-  const GROUP_KIND = { Atacar: 'attack', Conjuros: 'spell', Rasgos: 'feat', Objetos: 'item' };
+  const GROUP_KIND = { Atacar: 'attack', Conjuros: 'spell', Metamagia: 'spell', Rasgos: 'feat', Objetos: 'item' };
   const MONSTER_ICON = {
     goblin: '👺', wolf: '🐺', skeleton: '🦴', zombie: '🧟', giant_rat: '🐀', ghoul: '💀', bugbear: '👹',
     bandit: '🗡️', thug: '🥊', bandit_captain: '🏴‍☠️', cultist: '🕯️', cult_fanatic: '🔱', kobold: '🦎', orc: '🐗', hobgoblin: '🪖',
@@ -18,7 +18,8 @@
   };
   const TONE = { good: 'Final feliz', mixed: 'Final agridulce', bad: 'Final oscuro' };
   const STAT_LABELS = { ataque: 'Ataque', defensa: 'Defensa', magia: 'Magia', apoyo: 'Apoyo', sigilo: 'Sigilo' };
-  const GOOD_CONDS = ['blessed', 'shielded', 'dodging', 'hidden', 'helped', 'shield_spell'];
+  const GOOD_CONDS = ['blessed', 'shielded', 'dodging', 'hidden', 'helped', 'shield_spell', 'invisible', 'raging', 'blurred', 'mirrored', 'sanctuary', 'protected', 'heroism', 'resisting', 'divine_favor', 'innate_sorcery', 'sacred_weapon', 'shillelagh', 'dragon_breath', 'steady_aim', 'barkskin', 'magic_weapon', 'inspired', 'wild_shape', 'focused_dodge', 'stable'];
+  const MASTERY_NAMES = { sap: 'Debilitar', vex: 'Molestar', topple: 'Derribar', push: 'Empujar', slow: 'Ralentizar', cleave: 'Hendir', graze: 'Rozar', nick: 'Mellar' };
 
   // Solo reemplaza el HTML si ha cambiado (evita perder clics durante actualizaciones)
   const setHTML = (el, html) => { if (el._html === html) return false; el._html = html; el.innerHTML = html; return true; };
@@ -326,8 +327,8 @@
   }
 
   function pcTags(p) {
-    const cond = p.conditions.map((c) => `<span class="tag ${GOOD_CONDS.includes(c.key) ? 'good' : 'bad'}">${esc(c.name)}</span>`).join('');
-    const extra = [p.concentration ? `<span class="tag">🧠 ${esc(p.concentration)}</span>` : '', p.guidance ? '<span class="tag good">Orientación</span>' : '', p.spiritualWeapon ? '<span class="tag good">Arma espiritual</span>' : ''].join('');
+    const cond = p.conditions.map((c) => `<span class="tag ${GOOD_CONDS.includes(c.key) ? 'good' : 'bad'}" title="${esc(c.desc || '')}">${esc(c.name)}${c.rounds ? ` <small>${c.rounds}</small>` : ''}</span>`).join('');
+    const extra = [p.concentration ? `<span class="tag">🧠 ${esc(p.concentration)}</span>` : '', p.guidance ? '<span class="tag good">Orientación</span>' : '', p.shape ? `<span class="tag good">${p.shape.icon} ${esc(p.shape.name)}</span>` : '', p.images ? `<span class="tag good">Imágenes ×${p.images}</span>` : '', p.enhanced ? '<span class="tag good">Potenciar característica</span>' : ''].join('');
     const pips = (n, cls) => `<span class="ds ${cls}">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;
     const death = p.down ? `<div class="death">${p.stable ? '<b>Estable</b>' : `Salvaciones contra muerte ${pips(p.deathSaves.s, 's')} ${pips(p.deathSaves.f, 'f')}`}</div>` : '';
     return death + (cond || extra ? `<div class="tags">${cond}${extra}</div>` : '');
@@ -620,7 +621,7 @@
       const cb = v.combat;
       if (cb.actions.length) {
         const ts = cb.turnState;
-        html += `<div class="turn-head"><span class="who">Tu turno: ${esc(myPc.name)}</span><div class="economy" style="--c:${myPc.color}"><span class="${ts.action > 0 ? '' : 'used'}">Acción${ts.action > 1 ? ' ×' + ts.action : ''}</span><span class="${ts.bonus > 0 ? '' : 'used'}">Adicional</span></div></div>`;
+        html += `<div class="turn-head"><span class="who">Tu turno: ${esc(myPc.name)}</span><div class="economy" style="--c:${myPc.color}"><span class="${ts.action > 0 ? '' : 'used'}">Acción${ts.action > 1 ? ' ×' + ts.action : ''}</span><span class="${ts.bonus > 0 ? '' : 'used'}">Adicional</span>${myPc.spellcasting && myPc.spellcasting.slots.length ? `<span class="${ts.slotUsed ? 'used' : ''}" title="Solo puedes gastar un espacio de conjuro por turno">Espacio de conjuro</span>` : ''}</div></div>`;
         html += targetingBar(v);
         const groups = {};
         for (const a of cb.actions) (groups[a.group] = groups[a.group] || []).push(a);
@@ -694,7 +695,7 @@
       // vista previa desde el lobby (aún no está en el grupo)
       const c = v.catalog.find((x) => x.id === id);
       if (!c) return;
-      setHTML(body, `<div class="sheet"><div class="full head"><span class="medallion" style="--c:${c.color}">${c.portrait}</span><div><h2>${esc(c.name)}</h2><div class="sub">${esc(c.race)} · ${esc(c.className)} · ${esc(c.subclass)} · Trasfondo: ${esc(c.background)}</div></div></div>
+      setHTML(body, `<div class="sheet"><div class="full head"><span class="medallion" style="--c:${c.color}">${c.portrait}</span><div><h2>${esc(c.name)}</h2><div class="sub">${esc(c.race)} · ${esc(c.className)} · Trasfondo: ${esc(c.background)}</div></div></div>
         <div class="full kv"><div>PG <b>${c.hp}</b></div><div>CA <b>${c.ac}</b></div>${c.role ? `<div>${esc(c.role)}</div>` : ''}</div>
         <p class="full bio">${esc(c.bio)}</p><p class="full hint">Elige este personaje para ver su ficha completa.</p></div>`);
       return;
@@ -705,20 +706,23 @@
     const stats = Object.entries(p.abilities).map(([k, a]) => `<div class="stat" data-roll="ability:${k}" title="Prueba de ${ABIL_FULL[k]}"><div class="lbl">${ABIL[k]}</div><div class="mod">${fmt(a.mod)}</div><div class="score">${a.score}</div></div>`).join('');
     const saves = Object.entries(p.abilities).map(([k, a]) => `<li class="${a.saveProf ? 'p' : 'np'}" data-roll="save:${k}"><span>${ABIL_FULL[k]}</span><b>${fmt(a.save)}</b></li>`).join('');
     const skills = p.skills.map((s) => `<li class="${s.expertise ? 'p e' : s.prof ? 'p' : 'np'}" data-roll="skill:${s.key}"><span>${esc(s.name)} <span class="hint">(${ABIL[s.ability]})</span></span><b>${fmt(s.mod)}</b></li>`).join('');
-    const weapons = p.weapons.map((w) => `<li>⚔️ <b>${esc(w.name)}</b>: ${fmt(w.toHit)} al ataque, ${esc(w.dmg)} ${esc(w.type)}${w.light ? ' · ligera' : ''}</li>`).join('');
+    const weapons = p.weapons.map((w) => `<li>⚔️ <b>${esc(w.name)}</b>: ${fmt(w.toHit)} al ataque, ${esc(w.dmg)} ${esc(w.type)}${w.light ? ' · ligera' : ''}${w.mastery && MASTERY_NAMES[w.mastery] ? ` · <span class="hint" title="Propiedad de maestría">maestría: ${MASTERY_NAMES[w.mastery]}</span>` : ''}</li>`).join('');
+    const uses = p.uses.length ? `<h3 style="margin-top:12px">Recursos</h3><ul>${p.uses.map((u) => `<li>${esc(u.name)}: <b>${u.cur}</b>/${u.max}</li>`).join('')}</ul>` : '';
+    const conds = p.conditions.length ? `<div class="full tags">${p.conditions.map((c) => `<span class="tag ${GOOD_CONDS.includes(c.key) ? 'good' : 'bad'}" title="${esc(c.desc || '')}">${esc(c.name)}${c.rounds ? ` (${c.rounds} asaltos)` : ''}</span>`).join('')}${p.concentration ? `<span class="tag">🧠 Concentrado en ${esc(p.concentration)}</span>` : ''}</div>` : (p.concentration ? `<div class="full tags"><span class="tag">🧠 Concentrado en ${esc(p.concentration)}</span></div>` : '');
     const sc = p.spellcasting;
-    const spells = sc ? `<h3>Conjuros</h3><div class="hint">CD de salvación ${sc.dc} · Ataque de conjuro ${fmt(sc.attack)}</div>
+    const spells = sc ? `<h3>Conjuros</h3><div class="hint">Aptitud: ${esc(sc.abilityName)} · CD de salvación ${sc.dc} · Ataque de conjuro ${fmt(sc.attack)}</div>
       <div class="slots">${sc.slots.map((s) => `<span>Nv ${s.level}: ${Array.from({ length: s.max }, (_, i) => `<span class="slot-pip ${i < s.cur ? 'full' : ''}"></span>`).join('')}</span>`).join('')}</div>
-      ${[0, 1, 2].map((lvl) => { const l = sc.spells.filter((s) => s.level === lvl); return l.length ? `<div class="feature"><b>${lvl === 0 ? 'Trucos' : 'Nivel ' + lvl}:</b> ${l.map((s) => `<span title="${esc(spellDesc(s.id))}" style="border-bottom:1px dotted">${esc(s.name)}</span>`).join(', ')}</div>` : ''; }).join('')}` : '';
+      ${[0, 1, 2].map((lvl) => { const l = sc.spells.filter((s) => s.level === lvl); return l.length ? `<div class="feature"><b>${lvl === 0 ? 'Trucos' : 'Nivel ' + lvl}:</b> ${l.map((s) => `<span title="${esc(s.desc || spellDesc(s.id))}" style="border-bottom:1px dotted">${esc(s.name)}</span>${s.conc ? ' <small title="Concentración">C</small>' : ''}${s.ritual ? ' <small title="Ritual">R</small>' : ''}${s.time === 'bonus' ? ' <small title="Acción adicional">AA</small>' : s.time === 'reaction' ? ' <small title="Reacción">Re</small>' : ''}${s.free ? ' <small title="Puedes lanzarlo una vez gratis">(gratis)</small>' : ''}`).join(', ')}</div>` : ''; }).join('')}` : '';
     const feats = p.features.map((f) => `<div class="feature"><b>${esc(f.name)}</b> <span class="src">${esc(f.source)}</span><br>${esc(f.desc)}</div>`).join('');
     const inv = p.inventory.map((i) => `<li title="${esc(i.desc)}">${i.magic ? '✨ ' : '• '}${esc(i.name)}${i.qty > 1 ? ' ×' + i.qty : ''}</li>`).join('');
     const changed = setHTML(body, `<div class="sheet">
       <div class="full head"><span class="medallion" style="--c:${p.color}">${p.portrait}</span><div><h2>${esc(p.name)}</h2>
-        <div class="sub">${esc(p.race)} · ${esc(p.className)} de nivel ${p.level} · ${esc(p.subclass)} · Trasfondo: ${esc(p.background)}${p.owner ? ' · Jugador: ' + esc(p.owner) : ''}</div></div></div>
-      <div class="full kv"><div>PG <b>${p.hp}/${p.maxHp}</b>${p.tempHp ? ` (+${p.tempHp})` : ''}</div><div>CA <b>${p.ac}</b> <span class="hint">${esc(p.armor)}</span></div><div>Competencia <b>${fmt(p.prof)}</b></div><div>Percepción pasiva <b>${p.passivePerception}</b></div><div>Dados de golpe <b>${esc(p.hitDice)}</b></div><div>PX <b>${p.xp}</b>${p.nextXp ? ` / ${p.nextXp}` : ' (máx.)'}</div></div>
+        <div class="sub">${esc(p.race)} · ${esc(p.className)} de nivel ${p.level}${p.subclass ? ' · ' + esc(p.subclass.replace(/ \(a nivel 3\)$/, '')) : ''}${p.shape ? ` · En forma de ${esc(p.shape.name.toLowerCase())}` : ''} · Trasfondo: ${esc(p.background)}${p.owner ? ' · Jugador: ' + esc(p.owner) : ''}</div></div></div>
+      <div class="full kv"><div>PG <b>${p.hp}/${p.maxHp}</b>${p.tempHp ? ` (+${p.tempHp})` : ''}</div><div>CA <b>${p.ac}</b> <span class="hint">${esc(p.armor)}</span></div><div>Iniciativa <b>${fmt(p.initiative)}</b></div><div>Velocidad <b>${esc(p.speed)}</b></div><div>Competencia <b>${fmt(p.prof)}</b></div><div>Percepción pasiva <b>${p.passivePerception}</b></div><div>Dados de golpe <b>${esc(p.hitDice)}</b></div><div>PX <b>${p.xp}</b>${p.nextXp ? ` / ${p.nextXp}` : ' (máx.)'}</div></div>
       ${mine ? '<div class="full hint">Haz clic en una característica, salvación o habilidad para tirarla en el chat (usa el selector Normal/Ventaja del panel de dados).</div>' : ''}
+      ${conds}
       <div class="full stats-row">${stats}</div>
-      <div><h3>Tiradas de salvación</h3><ul class="saves">${saves}</ul><h3 style="margin-top:12px">Ataques</h3><ul>${weapons}</ul>${spells ? '<div style="margin-top:12px">' + spells + '</div>' : ''}</div>
+      <div><h3>Tiradas de salvación</h3><ul class="saves">${saves}</ul><h3 style="margin-top:12px">Ataques</h3><ul>${weapons}</ul>${uses}${spells ? '<div style="margin-top:12px">' + spells + '</div>' : ''}</div>
       <div><h3>Habilidades</h3><ul class="skills">${skills}</ul></div>
       <div><h3>Rasgos y pasivas</h3>${feats}</div>
       <div><h3>Equipo</h3><ul>${inv}</ul><h3 style="margin-top:12px">Historia</h3><p class="bio">${esc(p.bio)}</p></div>
@@ -737,7 +741,7 @@
   const G_SECTIONS = [
     ['rules', 'Reglas básicas'], ['skills', 'Habilidades'], ['features', 'Rasgos y pasivas'], ['items', 'Objetos'],
     ['spells', 'Conjuros'], ['conditions', 'Condiciones'], ['monsters', 'Criaturas'],
-    ['races', 'Razas'], ['classes', 'Clases'], ['backgrounds', 'Trasfondos'],
+    ['species', 'Especies'], ['classes', 'Clases'], ['backgrounds', 'Trasfondos'], ['feats', 'Dotes'],
   ];
   const gnorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const G = { tab: 'all', data: null };
@@ -831,124 +835,156 @@
 
 
   // ------------------------------------------------------------------ asistente de creación de personaje
+  // Reglas de 2024: clase → origen (trasfondo y especie) → características → habilidades → rasgos → magia → equipo.
+  // Qué hay que elegir lo decide /choices.js, el mismo código con el que valida el servidor.
   const WZ = { data: null, step: 0, spec: null, busy: false };
-  const PORTRAITS = ['🧑', '👩', '👨', '🧔', '👱', '🧕', '👩‍🦰', '👨‍🦳', '🧝', '🧙', '🥷', '🛡️', '⚔️', '🏹', '🔮', '✨', '🗡️', '🐉', '😈', '⛏️', '🍀', '⚙️', '🌗', '🪓', '🦊', '🐺', '🌙', '🔥'];
+  const PORTRAITS = ['🧑', '👩', '👨', '🧔', '👱', '🧕', '👩‍🦰', '👨‍🦳', '🧝', '🧙', '🥷', '🛡️', '⚔️', '🏹', '🔮', '✨', '🗡️', '🐉', '😈', '⛏️', '🍀', '⚙️', '🌗', '🪓', '🦊', '🐺', '🌙', '🔥', '🎻', '🌿', '🙏', '👊', '⚜️', '🪄', '🐻', '🦉'];
   const COLORS = ['#c0392b', '#d35400', '#b7950b', '#27ae60', '#16a085', '#2980b9', '#8e44ad', '#c2185b', '#7f8c8d', '#5d4037'];
   const amod = (v) => Math.floor((v - 10) / 2);
   async function creationData() {
     if (!WZ.data) WZ.data = await fetch('/api/creation').then((r) => r.json());
     return WZ.data;
   }
-  const wRace = () => WZ.data.races.find((r) => r.id === WZ.spec.race);
-  const wCls = () => WZ.data.classes.find((c) => c.id === WZ.spec.cls);
-  const wBg = () => WZ.data.backgrounds.find((b) => b.id === WZ.spec.background);
+  const wSp = () => WZ.spec.species && WZ.data.species.find((r) => r.id === WZ.spec.species);
+  const wCls = () => WZ.spec.cls && WZ.data.classes.find((c) => c.id === WZ.spec.cls);
+  const wBg = () => WZ.spec.background && WZ.data.backgrounds.find((b) => b.id === WZ.spec.background);
   const skillName = (id) => (WZ.data.skills.find((s) => s.id === id) || {}).name || id;
+  const abilName = (id) => (WZ.data.abilities.find((a) => a.id === id) || {}).name || id;
   const abilShort = (id) => ABIL[id];
+  const fem = () => WZ.spec.gender === 'f';
+  const wChoices = () => Choices.creationChoices(WZ.data, WZ.spec);
+  const stepChoices = (step) => wChoices().filter((c) => c.step === step);
   function wSteps() {
-    const r = WZ.spec.race && wRace(), c = WZ.spec.cls && wCls();
-    const magic = (c && c.spells) || (r && r.cantrip);
-    return [['race', 'Raza'], ['class', 'Clase'], ['abil', 'Características'], ['skills', 'Trasfondo y habilidades'], ...(magic ? [['magic', 'Magia']] : []), ['gear', 'Equipo'], ['details', 'Detalles'], ['summary', 'Resumen']];
-  }
-  function wFixedSkills() {
-    const r = wRace(), b = WZ.spec.background ? wBg() : null;
-    return [...new Set([...(r ? r.skills : []), ...(b ? b.skills : [])])];
-  }
-  function wAnyCount() {
-    const r = wRace(), b = WZ.spec.background ? wBg() : null;
-    if (!r) return 0;
-    return (r.extraSkills || 0) + (b ? r.skills.filter((x) => b.skills.includes(x)).length : 0);
-  }
-  function wFinal() {
-    const r = wRace();
-    const out = { ...WZ.spec.base };
-    if (r) { for (const [k, v] of Object.entries(r.bonus)) out[k] += v; for (const k of WZ.spec.plus1 || []) out[k] += 1; }
-    return out;
+    const has = (st) => WZ.spec.cls && stepChoices(st).length;
+    return [['class', 'Clase'], ['origin', 'Origen'], ['abil', 'Características'], ['skills', 'Habilidades'],
+      ...(has('features') ? [['features', 'Rasgos de clase']] : []), ...(has('magic') ? [['magic', 'Magia']] : []),
+      ['gear', 'Equipo'], ['details', 'Detalles'], ['summary', 'Resumen']];
   }
   function wPoints() { return Object.values(WZ.spec.base).reduce((a, v) => a + (WZ.data.pointCost[v] ?? 99), 0); }
+  const wFinal = () => Choices.finalAbilities(WZ.data, WZ.spec);
+  const kitOk = (k) => !k.requires || Object.entries(k.requires).every(([o, v]) => (WZ.spec.choices[`opt:${o}`] || []).includes(v));
   /** Problema que impide avanzar desde un paso (o null) */
   function wProblem(step) {
-    const s = WZ.spec, r = s.race && wRace(), c = s.cls && wCls();
+    const s = WZ.spec, c = wCls(), D = WZ.data;
     switch (step) {
-      case 'race': return !r ? 'Elige una raza.' : r.ancestry && !s.ancestry ? 'Elige tu linaje dracónico.' : null;
       case 'class': return !c ? 'Elige una clase.' : null;
-      case 'abil':
-        if (s.method === 'array' && Object.values(s.base).sort((a, b) => a - b).join() !== WZ.data.stdArray.join()) return 'Usa cada valor de la serie estándar una vez.';
-        if (s.method === 'points' && wPoints() > 27) return `Te has pasado de puntos (${wPoints()} de 27).`;
-        if (r.plus1 && (s.plus1 || []).length !== r.plus1) return `Elige ${r.plus1} características para el +1.`;
-        return null;
-      case 'skills':
+      case 'origin':
         if (!s.background) return 'Elige un trasfondo.';
-        if (s.skills.length !== c.skillChoices) return `Elige ${c.skillChoices} habilidades de clase.`;
-        if (s.anySkills.length !== wAnyCount()) return `Elige ${wAnyCount()} habilidades libres.`;
-        if (c.expertise && s.expertise.length !== c.expertise) return `Elige ${c.expertise} habilidades de pericia.`;
-        return null;
-      case 'magic':
-        if (c.spells && s.cantrips.length !== c.spells.cantrips.count) return `Elige ${c.spells.cantrips.count} trucos.`;
-        if (c.spells && s.spells.length !== c.spells.level1.count) return `Elige ${c.spells.level1.count} conjuros de nivel 1.`;
-        if (r.cantrip && !s.elfCantrip) return 'Elige tu truco de alto elfo.';
-        return null;
-      case 'gear': return !s.kit ? 'Elige tu equipo.' : c.styles && !s.style ? 'Elige un estilo de combate.' : null;
+        if (!s.species) return 'Elige una especie.';
+        return Choices.choicesProblem(D, s, 'origin');
+      case 'abil':
+        if (s.method === 'array' && Object.values(s.base).sort((a, b) => a - b).join() !== D.stdArray.join()) return 'Usa cada valor de la serie estándar una vez.';
+        if (s.method === 'points' && wPoints() > 27) return `Te has pasado de puntos (${wPoints()} de 27).`;
+        return Choices.bonusProblem(wBg(), s.bgPlus);
+      case 'skills': case 'features': case 'magic': return Choices.choicesProblem(D, s, step);
+      case 'gear': { const k = s.kit && c.kits.find((x) => x.id === s.kit); return !k ? 'Elige tu equipo.' : !kitOk(k) ? 'Ese equipo necesita otra elección de clase.' : null; }
       case 'details': return s.name.trim().length < 2 ? 'Ponle un nombre a tu personaje.' : null;
       default: return null;
     }
   }
   const chip = (on, attrs, html, disabled = false) => `<button type="button" class="wchip ${on ? 'on' : ''}" ${attrs} ${disabled ? 'disabled' : ''}>${html}</button>`;
+  const feats = (list) => list.map((f) => `<span class="wfeat" title="${esc(f.desc)}">${esc(f.name)}</span>`).join(' ');
   function pickToggle(list, id, max) {
     const i = list.indexOf(id);
     if (i >= 0) list.splice(i, 1);
     else { if (list.length >= max) list.shift(); list.push(id); }
   }
+  /** +2/+1 por defecto a las dos características del trasfondo que más le importan a la clase */
+  function wDefaultPlus() {
+    const s = WZ.spec, b = wBg(), c = wCls();
+    if (!b) return {};
+    const rank = c ? c.recommended : s.base;
+    const order = b.abilities.slice().sort((x, y) => (rank[y] || 0) - (rank[x] || 0));
+    return { [order[0]]: 2, [order[1]]: 1 };
+  }
+  /** Una elección genérica: tarjetas si las opciones tienen descripción larga, fichas si son conjuros o habilidades */
+  function choiceBlock(c) {
+    const sel = WZ.spec.choices[c.key] || [];
+    const isSpell = c.options.some((o) => WZ.data.spells[o.id]);
+    const cards = !isSpell && c.options.some((o) => o.desc && o.desc.length > 40);
+    let h = `<h4>${esc(c.label)} <span class="muted small">(${sel.length}/${c.count})</span></h4>`;
+    if (cards) {
+      h += `<div class="wgrid small">${c.options.map((o) => `<button type="button" class="wcard ${sel.includes(o.id) ? 'on' : ''}" data-ch="${esc(c.key)}" data-opt="${esc(o.id)}" ${o.disabled && !sel.includes(o.id) ? 'disabled' : ''}><b>${esc(o.name)}</b><small>${esc(o.desc || '')}</small></button>`).join('')}</div>`;
+    } else {
+      h += `<div class="wchips">${c.options.map((o) => chip(sel.includes(o.id), `data-ch="${esc(c.key)}" data-opt="${esc(o.id)}" ${o.desc ? `title="${esc(o.desc)}"` : ''}`, esc(o.name) + (isSpell && o.level ? ` <small>nv ${o.level}</small>` : ''), o.disabled && !sel.includes(o.id))).join('')}</div>`;
+    }
+    return h;
+  }
+  /** Conjuros que el personaje tendrá siempre preparados por clase o especie (solo para mostrarlos) */
+  function alwaysSpells() {
+    const c = wCls(), sp = wSp(), D = WZ.data, out = [];
+    const name = (id) => (D.spells[id] || {}).name || id;
+    if (c && c.caster) for (const [l, list] of Object.entries(c.caster.always || {})) for (const id of list) out.push(`${name(id)}${+l > 1 ? ` (nv ${l})` : ''}`);
+    if (sp) {
+      const lin = sp.lineages && sp.lineages.find((l) => (WZ.spec.choices['sp:lineage'] || [])[0] === l.id);
+      for (const [l, list] of Object.entries((lin && lin.spells) || {})) for (const id of list) out.push(`${name(id)}${+l > 1 ? ` (nv ${l})` : ''}`);
+      for (const id of sp.alwaysSpells || []) out.push(name(id));
+    }
+    return out;
+  }
   function wRender() {
     const d = WZ.data, s = WZ.spec;
+    Choices.prune(d, s);
     const steps = wSteps();
     WZ.step = Math.min(WZ.step, steps.length - 1);
     const [key, title] = steps[WZ.step];
-    const r = s.race && wRace(), c = s.cls && wCls();
+    const c = wCls(), sp = wSp(), bg = wBg();
     $('#wzSteps').innerHTML = steps.map(([k, t], i) => `<button type="button" class="${i === WZ.step ? 'active' : ''} ${i < WZ.step ? 'done' : ''}" data-wstep="${i}" ${i > WZ.step && steps.slice(0, i).some(([kk]) => wProblem(kk)) ? 'disabled' : ''}><b>${i + 1}</b><span>${t}</span></button>`).join('');
     let h = `<h3>${title}</h3>`;
-    if (key === 'race') {
-      h += `<div class="wgrid">${d.races.map((x) => `<button type="button" class="wcard ${s.race === x.id ? 'on' : ''}" data-race="${x.id}"><span class="wic">${x.icon}</span><b>${esc(s.gender === 'f' ? x.fem : x.name)}</b><span class="wtags">${Object.entries(x.bonus).map(([k, v]) => `<i>${abilShort(k)} +${v}</i>`).join('')}${x.plus1 ? `<i>+1 a ${x.plus1} a elegir</i>` : ''}</span><small>${esc(x.desc)}</small></button>`).join('')}</div>`;
-      if (r) h += `<div class="wnote"><b>Rasgos:</b> ${r.features.map((f) => `<span class="wfeat" title="${esc(f.desc)}">${esc(f.name)}</span>`).join(' ')}</div>`;
-      if (r && r.ancestry) h += `<h4>Linaje dracónico</h4><div class="wchips">${d.ancestries.map((a) => chip(s.ancestry === a.id, `data-anc="${a.id}"`, `${esc(a.name)} <small>${esc(a.type)} · ${a.shape === 'line' ? 'línea' : 'cono'}</small>`)).join('')}</div>`;
-    } else if (key === 'class') {
-      h += `<div class="wgrid">${d.classes.map((x) => `<button type="button" class="wcard ${s.cls === x.id ? 'on' : ''}" data-cls="${x.id}"><span class="wic">${x.icon}</span><b>${esc(s.gender === 'f' ? x.fem : x.name)}</b><span class="wtags"><i>d${x.hitDie} PG</i><i>Salv.: ${x.saves.map(abilShort).join(', ')}</i></span><small>${esc(x.desc)}</small>${statBars(x.stats)}</button>`).join('')}</div>`;
-      if (c) h += `<div class="wnote"><b>${esc(c.subclass)}.</b> ${c.features.map((f) => `<span class="wfeat" title="${esc(f.desc)}">Nv ${f.level}: ${esc(f.name)}</span>`).join(' ')}</div>`;
+    if (key === 'class') {
+      h += `<div class="wgrid">${d.classes.map((x) => `<button type="button" class="wcard ${s.cls === x.id ? 'on' : ''}" data-cls="${x.id}"><span class="wic">${x.icon}</span><b>${esc(fem() ? x.fem : x.name)}</b><span class="wtags"><i>d${x.hitDie} PG</i><i>${abilShort(x.primary)} principal</i><i>Salv.: ${x.saves.map(abilShort).join(', ')}</i></span><small>${esc(x.desc)}</small>${statBars(x.stats)}</button>`).join('')}</div>`;
+      if (c) {
+        h += `<div class="wnote"><b>${esc(c.subclass)}.</b> Armaduras: ${esc(c.armorTraining || 'ninguna')} · Armas: ${esc(c.weaponTraining)}${c.masteries ? ` · Maestría en ${c.masteries} armas` : ''}</div>`;
+        h += `<div class="wnote">${[1, 2, 3].map((l) => `<div><b>Nivel ${l}:</b> ${feats(c.features.filter((f) => f.level === l))}</div>`).join('')}</div>`;
+      }
+    } else if (key === 'origin') {
+      h += `<p class="muted small">El <b>trasfondo</b> te da +2/+1 (o +1/+1/+1) a tres características, dos habilidades, una dote de origen y algo de equipo. La <b>especie</b> te da rasgos innatos.</p>`;
+      h += `<h4>Trasfondo</h4><div class="wgrid small">${d.backgrounds.map((b) => {
+        const f = d.feats.find((x) => x.id === b.feat);
+        return `<button type="button" class="wcard ${s.background === b.id ? 'on' : ''}" data-bg="${b.id}"><b>${esc(fem() ? b.fem : b.name)}</b><span class="wtags">${b.abilities.map((k) => `<i>${abilShort(k)}</i>`).join('')}<i>${esc(f.name)}${b.featList ? ` (${esc(d.listNames[b.featList])})` : ''}</i></span><small>${esc(b.desc)} Habilidades: ${b.skills.map((k) => esc(skillName(k))).join(', ')}. Equipo: ${esc(b.items.join(', '))}.</small></button>`;
+      }).join('')}</div>`;
+      if (bg) { const f = d.feats.find((x) => x.id === bg.feat); h += `<div class="wnote"><b>${esc(f.name)}:</b> ${esc(f.desc)}</div>`; }
+      h += `<h4>Especie</h4><div class="wgrid small">${d.species.map((x) => `<button type="button" class="wcard ${s.species === x.id ? 'on' : ''}" data-sp="${x.id}"><span class="wic">${x.icon}</span><b>${esc(fem() ? x.fem : x.name)}</b><span class="wtags"><i>${String(x.speed).replace('.', ',')} m</i>${x.small ? '<i>Pequeño</i>' : ''}</span><small>${esc(x.desc)}</small></button>`).join('')}</div>`;
+      if (sp) h += `<div class="wnote"><b>Rasgos:</b> ${feats(sp.features)}</div>`;
+      for (const ch of stepChoices('origin')) h += choiceBlock(ch);
     } else if (key === 'abil') {
       const fin = wFinal();
-      h += `<div class="wseg">${chip(s.method === 'array', 'data-method="array"', 'Serie estándar (15, 14, 13, 12, 10, 8)')}${chip(s.method === 'points', 'data-method="points"', 'Compra de puntos (27)')}<button type="button" class="btn small ghost" data-recommend>Usar la recomendada para ${esc(c.name.toLowerCase())}</button></div>`;
+      const plus = s.bgPlus || {};
+      h += `<div class="wseg">${chip(s.method === 'array', 'data-method="array"', 'Serie estándar (15, 14, 13, 12, 10, 8)')}${chip(s.method === 'points', 'data-method="points"', 'Compra de puntos (27)')}<button type="button" class="btn small ghost" data-recommend>Usar la recomendada para ${esc((fem() ? c.fem : c.name).toLowerCase())}</button></div>`;
       if (s.method === 'points') h += `<p class="wpoints ${wPoints() > 27 ? 'bad' : ''}">Puntos gastados: <b>${wPoints()}</b> de 27</p>`;
+      const star = Object.entries(c.recommended).sort((x, y) => y[1] - x[1])[0][0];
       h += `<div class="wabil">${d.abilities.map((a) => {
-        const bonus = (r.bonus[a.id] || 0) + ((s.plus1 || []).includes(a.id) ? 1 : 0);
         const ctrl = s.method === 'array'
-          ? `<select data-arr="${a.id}">${d.stdArray.slice().reverse().map((v) => `<option ${s.base[a.id] === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`
+          ? `<select data-arr="${a.id}" aria-label="${esc(a.name)}">${d.stdArray.slice().reverse().map((v) => `<option ${s.base[a.id] === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`
           : `<span class="wpm"><button type="button" class="btn small" data-pm="${a.id}:-1" ${s.base[a.id] <= 8 ? 'disabled' : ''}>−</button><b>${s.base[a.id]}</b><button type="button" class="btn small" data-pm="${a.id}:1" ${s.base[a.id] >= 15 ? 'disabled' : ''}>+</button></span>`;
-        return `<div class="wab ${c.saves.includes(a.id) ? 'save' : ''}"><span class="wabn">${esc(a.name)}${c.recommended && Object.entries(c.recommended).sort((x, y) => y[1] - x[1])[0][0] === a.id ? ' ★' : ''}</span>${ctrl}<span class="wbonus">${bonus ? '+' + bonus : ''}</span><span class="wfin">${fin[a.id]}<small>${fmt(amod(fin[a.id]))}</small></span></div>`;
+        return `<div class="wab ${c.saves.includes(a.id) ? 'save' : ''}"><span class="wabn">${esc(a.name)}${star === a.id ? ' ★' : ''}</span>${ctrl}<span class="wbonus">${plus[a.id] ? '+' + plus[a.id] : ''}</span><span class="wfin">${fin[a.id]}<small>${fmt(amod(fin[a.id]))}</small></span></div>`;
       }).join('')}</div>`;
-      if (r.plus1) h += `<h4>+1 a ${r.plus1} características (${esc(r.name)})</h4><div class="wchips">${d.abilities.filter((a) => !r.bonus[a.id]).map((a) => chip((s.plus1 || []).includes(a.id), `data-plus1="${a.id}"`, esc(a.name))).join('')}</div>`;
-      h += `<p class="muted small">★ característica principal de la clase. Las marcadas en dorado son tus salvaciones competentes.</p>`;
+      const three = Object.values(plus).filter(Boolean).length === 3;
+      const two = Object.keys(plus).find((k) => plus[k] === 2), one = Object.keys(plus).find((k) => plus[k] === 1);
+      h += `<h4>Mejoras del trasfondo (${esc(fem() ? bg.fem : bg.name)})</h4><div class="wseg">${chip(!three, 'data-plusmode="21"', '+2 a una y +1 a otra')}${chip(three, 'data-plusmode="111"', '+1 a las tres')}</div>`;
+      if (!three) {
+        h += `<div class="wchips"><span class="muted small">+2 a:</span> ${bg.abilities.map((k) => chip(two === k, `data-plus2="${k}"`, esc(abilName(k)))).join('')}</div>`;
+        h += `<div class="wchips"><span class="muted small">+1 a:</span> ${bg.abilities.map((k) => chip(one === k, `data-plus1="${k}"`, esc(abilName(k)), two === k)).join('')}</div>`;
+      }
+      h += `<p class="muted small">★ característica principal de la clase. Las marcadas en dorado son tus salvaciones competentes. Ninguna puntuación puede pasar de 20.</p>`;
     } else if (key === 'skills') {
-      h += `<div class="wgrid small">${d.backgrounds.map((b) => `<button type="button" class="wcard ${s.background === b.id ? 'on' : ''}" data-bg="${b.id}"><b>${esc(b.name)}</b><span class="wtags">${b.skills.map((k) => `<i>${esc(skillName(k))}</i>`).join('')}</span><small>${esc(b.desc)} Equipo: ${esc(b.items.join(', '))}.</small></button>`).join('')}</div>`;
-      const fixed = wFixedSkills();
-      h += `<h4>Ya tienes</h4><div class="wchips">${fixed.map((k) => chip(true, 'disabled', '🔒 ' + esc(skillName(k)))).join('') || '<span class="muted small">Elige un trasfondo.</span>'}</div>`;
-      h += `<h4>Habilidades de ${esc(c.name.toLowerCase())}: elige ${c.skillChoices} (${s.skills.length}/${c.skillChoices})</h4><div class="wchips">${c.skillList.map((k) => chip(s.skills.includes(k), `data-sk="${k}"`, esc(skillName(k)), fixed.includes(k))).join('')}</div>`;
-      const any = wAnyCount();
-      if (any) h += `<h4>Habilidades libres: elige ${any} (${s.anySkills.length}/${any})</h4><div class="wchips">${d.skills.map((k) => chip(s.anySkills.includes(k.id), `data-any="${k.id}"`, esc(k.name), fixed.includes(k.id) || s.skills.includes(k.id))).join('')}</div>`;
-      if (c.expertise) {
-        const prof = [...fixed, ...s.skills, ...s.anySkills];
-        h += `<h4>Pericia: elige ${c.expertise} (doble competencia) (${s.expertise.length}/${c.expertise})</h4><div class="wchips">${prof.map((k) => chip(s.expertise.includes(k), `data-exp="${k}"`, esc(skillName(k)))).join('')}</div>`;
-      }
+      h += `<h4>Del trasfondo</h4><div class="wchips">${bg.skills.map((k) => chip(true, 'disabled', '🔒 ' + esc(skillName(k)))).join('')}</div>`;
+      for (const ch of stepChoices('skills')) h += choiceBlock(ch);
+    } else if (key === 'features') {
+      h += `<p class="muted small">Las elecciones marcadas «a nivel 2» o «a nivel 3» se aplican cuando tu personaje sube de nivel.</p>`;
+      for (const ch of stepChoices('features')) h += choiceBlock(ch);
     } else if (key === 'magic') {
-      const spellChip = (sp, list, attr) => chip(list.includes(sp.id), `data-${attr}="${sp.id}" title="${esc(sp.desc)}"`, esc(sp.name));
-      if (c.spells) {
-        h += `<h4>Trucos: elige ${c.spells.cantrips.count} (${s.cantrips.length}/${c.spells.cantrips.count})</h4><div class="wchips">${c.spells.cantrips.from.map((sp) => spellChip(sp, s.cantrips, 'can')).join('')}</div>`;
-        h += `<h4>Conjuros de nivel 1: elige ${c.spells.level1.count} (${s.spells.length}/${c.spells.level1.count})</h4><div class="wchips">${c.spells.level1.from.map((sp) => spellChip(sp, s.spells, 'sp1')).join('')}</div>`;
-        if (c.spells.level1.always.length) h += `<p class="muted small">Siempre preparados: ${c.spells.level1.always.map((x) => esc(x.name)).join(', ')}.</p>`;
-      }
-      if (r.cantrip) h += `<h4>Truco de alto elfo (usa Inteligencia)</h4><div class="wchips">${d.wizardCantrips.map((sp) => chip(s.elfCantrip === sp.id, `data-elf="${sp.id}" title="${esc(sp.desc)}"`, esc(sp.name), c.id === 'wizard' && s.cantrips.includes(sp.id))).join('')}</div>`;
-      h += `<div class="wnote" id="wzSpellDesc">Pasa el ratón por un conjuro para ver qué hace.</div>`;
+      const al = alwaysSpells();
+      if (al.length) h += `<div class="wnote"><b>Siempre preparados:</b> ${al.map(esc).join(', ')}</div>`;
+      for (const ch of stepChoices('magic')) h += choiceBlock(ch);
+      h += `<div class="wnote" id="wzSpellDesc">Pasa el ratón (o mantén el dedo) sobre un conjuro para ver qué hace.</div>`;
     } else if (key === 'gear') {
-      h += `<div class="wgrid small">${c.kits.map((k) => `<button type="button" class="wcard ${s.kit === k.id ? 'on' : ''}" data-kit="${k.id}"><b>${esc(k.name)}</b><small>${esc(k.desc)}</small></button>`).join('')}</div>`;
-      if (c.styles) h += `<h4>Estilo de combate</h4><div class="wgrid small">${c.styles.map((st) => `<button type="button" class="wcard ${s.style === st.id ? 'on' : ''}" data-style="${st.id}"><b>${esc(st.name)}</b><small>${esc(st.desc)}</small></button>`).join('')}</div>`;
+      h += `<div class="wgrid small">${c.kits.map((k) => `<button type="button" class="wcard ${s.kit === k.id ? 'on' : ''}" data-kit="${k.id}" ${kitOk(k) ? '' : 'disabled'}><b>${esc(k.name)}</b><small>${esc(k.desc)}${kitOk(k) ? '' : ' (necesita otra elección de clase)'}</small></button>`).join('')}</div>`;
+      const kit = s.kit && c.kits.find((k) => k.id === s.kit);
+      if (kit) {
+        h += `<ul class="wlist">${kit.weaponInfo.map((w) => `<li><b>${esc(w.name)}</b> ${esc(w.dmg || '')} ${esc(w.type || '')}${w.mastery && c.masteries ? ` · <span class="wfeat" title="${esc(w.mastery.desc)}">Maestría: ${esc(w.mastery.name)}</span>` : ''}</li>`).join('')}</ul>`;
+        if (c.masteries) h += `<p class="muted small">Dominas la maestría de hasta ${c.masteries} armas de tu equipo: su efecto se aplica solo al usarlas.</p>`;
+      }
     } else if (key === 'details') {
       h += `<div class="wform"><label>Nombre <input id="wzName" maxlength="28" value="${esc(s.name)}" placeholder="p. ej. Alma Brasaviva"></label>
         <div class="wseg">${chip(s.gender === 'f', 'data-gender="f"', 'Femenino')}${chip(s.gender === 'm', 'data-gender="m"', 'Masculino')}</div>
@@ -957,17 +993,21 @@
         <label>Historia (opcional) <textarea id="wzBio" maxlength="400" rows="3" placeholder="¿De dónde vienes? ¿Qué buscas?">${esc(s.bio)}</textarea></label></div>`;
     } else if (key === 'summary') {
       const fin = wFinal();
-      const hp = c.hitDie + amod(fin.con) + (s.race === 'dwarf' ? 1 : 0);
+      const hp = c.hitDie + amod(fin.con) + (sp.toughness ? 1 : 0);
       const kit = c.kits.find((k) => k.id === s.kit);
-      const allSkills = [...wFixedSkills(), ...s.skills, ...s.anySkills];
-      const spellNames = (ids, list) => ids.map((id) => (list.find((x) => x.id === id) || {}).name).filter(Boolean);
-      h += `<div class="wsum" style="--c:${s.color}"><span class="medallion">${esc(s.portrait || r.icon)}</span><div><h3>${esc(s.name)}</h3><div class="sub">${esc(s.gender === 'f' ? r.fem : r.name)}${s.ancestry ? ` (linaje ${esc(d.ancestries.find((a) => a.id === s.ancestry).name.toLowerCase())})` : ''} · ${esc(s.gender === 'f' ? c.fem : c.name)} 1 · ${esc(wBg().name)}</div></div></div>
+      const lin = sp.lineages && sp.lineages.find((l) => (s.choices['sp:lineage'] || [])[0] === l.id);
+      const optName = (ch, id) => (ch.options.find((o) => o.id === id) || {}).name || id;
+      const rows = wChoices().filter((ch) => (s.choices[ch.key] || []).length).map((ch) => `<li><b>${esc(ch.label.replace(/: elige \d+$/, ''))}:</b> ${(s.choices[ch.key] || []).map((id) => esc(optName(ch, id))).join(', ')}</li>`);
+      const al = alwaysSpells();
+      h += `<div class="wsum" style="--c:${s.color}"><span class="medallion">${esc(s.portrait || sp.icon)}</span><div><h3>${esc(s.name)}</h3><div class="sub">${esc(fem() ? sp.fem : sp.name)}${lin ? ` (${esc(lin.name.toLowerCase())})` : ''} · ${esc(fem() ? c.fem : c.name)} 1 · ${esc(fem() ? bg.fem : bg.name)}</div></div></div>
         <div class="wabil sum">${d.abilities.map((a) => `<div class="wab"><span class="wabn">${a.short || ABIL[a.id]}</span><span class="wfin">${fin[a.id]}<small>${fmt(amod(fin[a.id]))}</small></span></div>`).join('')}</div>
-        <ul class="wlist"><li><b>Puntos de golpe:</b> ${hp}</li><li><b>Equipo:</b> ${esc(kit.desc)}${c.styles ? ` · Estilo: ${esc(c.styles.find((x) => x.id === s.style).name)}` : ''}</li>
-        <li><b>Habilidades:</b> ${allSkills.map((k) => esc(skillName(k)) + (s.expertise.includes(k) ? ' (pericia)' : '')).join(', ')}</li>
-        ${c.spells ? `<li><b>Trucos:</b> ${spellNames(s.cantrips, c.spells.cantrips.from).join(', ')}</li><li><b>Conjuros:</b> ${[...c.spells.level1.always.map((x) => x.name), ...spellNames(s.spells, c.spells.level1.from)].join(', ')}</li>` : ''}
-        ${r.cantrip ? `<li><b>Truco de alto elfo:</b> ${esc((d.wizardCantrips.find((x) => x.id === s.elfCantrip) || {}).name || '')}</li>` : ''}
-        <li><b>Rasgos:</b> ${[...r.features, ...c.features.filter((f) => f.level === 1)].map((f) => esc(f.name)).join(', ')}</li></ul>`;
+        <ul class="wlist"><li><b>Puntos de golpe:</b> ${hp} · <b>Velocidad:</b> ${String(lin && lin.speed ? lin.speed : sp.speed).replace('.', ',')} m</li><li><b>Equipo:</b> ${esc(kit.desc)}</li>
+        <li><b>Habilidades del trasfondo:</b> ${bg.skills.map((k) => esc(skillName(k))).join(', ')}</li>
+        <li><b>Dote de origen:</b> ${esc(d.feats.find((x) => x.id === bg.feat).name)}</li>
+        ${rows.join('')}
+        ${al.length ? `<li><b>Siempre preparados:</b> ${al.map(esc).join(', ')}</li>` : ''}
+        <li><b>Rasgos:</b> ${[...sp.features, ...c.features.filter((f) => f.level === 1)].map((f) => esc(f.name)).join(', ')}</li>
+        <li class="muted small">${esc(c.subclass)}. Al subir de nivel ganarás: ${c.features.filter((f) => f.level > 1).map((f) => esc(f.name)).join(', ')}.</li></ul>`;
     }
     const prob = wProblem(key);
     h += `<p class="wprob">${prob ? '⚠️ ' + esc(prob) : ''}</p>`;
@@ -980,20 +1020,26 @@
     wBind();
   }
   function wSet(fn) { fn(WZ.spec); wRender(); }
-  function wResetForClass() {
-    const c = wCls();
-    Object.assign(WZ.spec, { kit: null, style: null, skills: [], expertise: [], cantrips: [], spells: [], method: 'array' });
-    WZ.spec.base = { ...c.recommended };
-  }
   function wBind() {
     const b = $('#wzBody'), s = WZ.spec;
     const on = (sel, fn) => $$(sel, b).forEach((el) => (el.onclick = () => fn(el)));
     $$('[data-wstep]', $('#wzSteps')).forEach((el) => (el.onclick = () => { WZ.step = +el.dataset.wstep; wRender(); }));
-    on('[data-race]', (el) => wSet(() => { s.race = el.dataset.race; s.plus1 = []; s.anySkills = []; s.ancestry = null; s.elfCantrip = null; if (!s._por) s.portrait = wRace().icon; }));
-    on('[data-anc]', (el) => wSet(() => { s.ancestry = el.dataset.anc; }));
-    on('[data-cls]', (el) => wSet(() => { if (s.cls !== el.dataset.cls) { s.cls = el.dataset.cls; wResetForClass(); } }));
+    on('[data-cls]', (el) => wSet(() => {
+      if (s.cls === el.dataset.cls) return;
+      s.cls = el.dataset.cls; s.kit = null; s.method = 'array'; s.base = { ...wCls().recommended };
+      if (s.background) s.bgPlus = wDefaultPlus();
+      if (!s._por) s.portrait = wCls().icon;
+    }));
+    on('[data-bg]', (el) => wSet(() => { s.background = el.dataset.bg; s.bgPlus = wDefaultPlus(); }));
+    on('[data-sp]', (el) => wSet(() => { s.species = el.dataset.sp; }));
+    on('[data-ch]', (el) => wSet(() => {
+      const ch = wChoices().find((x) => x.key === el.dataset.ch);
+      if (!ch) return;
+      const list = (s.choices[ch.key] = (s.choices[ch.key] || []).slice());
+      pickToggle(list, el.dataset.opt, ch.count);
+    }));
     on('[data-method]', (el) => wSet(() => { s.method = el.dataset.method; if (s.method === 'array') s.base = { ...wCls().recommended }; else for (const k of Object.keys(s.base)) s.base[k] = Math.min(15, Math.max(8, s.base[k])); }));
-    on('[data-recommend]', () => wSet(() => { s.method = 'array'; s.base = { ...wCls().recommended }; }));
+    on('[data-recommend]', () => wSet(() => { s.method = 'array'; s.base = { ...wCls().recommended }; s.bgPlus = wDefaultPlus(); }));
     $$('[data-arr]', b).forEach((el) => (el.onchange = () => wSet(() => {
       const k = el.dataset.arr, v = +el.value;
       const other = Object.keys(s.base).find((x) => x !== k && s.base[x] === v);
@@ -1001,17 +1047,15 @@
       s.base[k] = v;
     })));
     on('[data-pm]', (el) => wSet(() => { const [k, dlt] = el.dataset.pm.split(':'); s.base[k] = Math.max(8, Math.min(15, s.base[k] + +dlt)); }));
-    on('[data-plus1]', (el) => wSet(() => pickToggle(s.plus1, el.dataset.plus1, wRace().plus1)));
-    on('[data-bg]', (el) => wSet(() => { s.background = el.dataset.bg; const fixed = wFixedSkills(); s.skills = s.skills.filter((x) => !fixed.includes(x)); s.anySkills = []; s.expertise = []; }));
-    on('[data-sk]', (el) => wSet(() => { pickToggle(s.skills, el.dataset.sk, wCls().skillChoices); s.anySkills = s.anySkills.filter((x) => !s.skills.includes(x)); s.expertise = s.expertise.filter((x) => [...wFixedSkills(), ...s.skills, ...s.anySkills].includes(x)); }));
-    on('[data-any]', (el) => wSet(() => { pickToggle(s.anySkills, el.dataset.any, wAnyCount()); s.expertise = s.expertise.filter((x) => [...wFixedSkills(), ...s.skills, ...s.anySkills].includes(x)); }));
-    on('[data-exp]', (el) => wSet(() => pickToggle(s.expertise, el.dataset.exp, wCls().expertise)));
-    on('[data-can]', (el) => wSet(() => { pickToggle(s.cantrips, el.dataset.can, wCls().spells.cantrips.count); if (s.cls === 'wizard' && s.cantrips.includes(s.elfCantrip)) s.elfCantrip = null; }));
-    on('[data-sp1]', (el) => wSet(() => pickToggle(s.spells, el.dataset.sp1, wCls().spells.level1.count)));
-    on('[data-elf]', (el) => wSet(() => { s.elfCantrip = el.dataset.elf; }));
-    $$('[data-can], [data-sp1], [data-elf]', b).forEach((el) => (el.onmouseenter = el.onfocus = () => { const dd = $('#wzSpellDesc'); if (dd) dd.innerHTML = `<b>${esc(el.textContent)}</b> · ${esc(el.title)}`; }));
-    on('[data-kit]', (el) => wSet(() => { s.kit = el.dataset.kit; if (s.kit === 'arquero' && !s.style) s.style = 'archery'; }));
-    on('[data-style]', (el) => wSet(() => { s.style = el.dataset.style; }));
+    on('[data-plusmode]', (el) => wSet(() => { s.bgPlus = el.dataset.plusmode === '111' ? Object.fromEntries(wBg().abilities.map((k) => [k, 1])) : wDefaultPlus(); }));
+    on('[data-plus2]', (el) => wSet(() => {
+      const k = el.dataset.plus2, one = Object.keys(s.bgPlus).find((x) => s.bgPlus[x] === 1);
+      const other = one && one !== k ? one : wBg().abilities.find((x) => x !== k);
+      s.bgPlus = { [k]: 2, [other]: 1 };
+    }));
+    on('[data-plus1]', (el) => wSet(() => { const two = Object.keys(s.bgPlus).find((x) => s.bgPlus[x] === 2); s.bgPlus = { [two]: 2, [el.dataset.plus1]: 1 }; }));
+    $$('[data-ch][title]', b).forEach((el) => (el.onmouseenter = el.onfocus = () => { const dd = $('#wzSpellDesc'); if (dd) dd.innerHTML = `<b>${esc(el.textContent)}</b> · ${esc(el.title)}`; }));
+    on('[data-kit]', (el) => wSet(() => { s.kit = el.dataset.kit; }));
     on('[data-gender]', (el) => wSet(() => { s.gender = el.dataset.gender; }));
     on('[data-por]', (el) => wSet(() => { s.portrait = el.dataset.por; s._por = true; }));
     on('[data-col]', (el) => wSet(() => { s.color = el.dataset.col; }));
@@ -1022,7 +1066,8 @@
   }
   async function openCreator() {
     try { await creationData(); } catch { toast('No se pudieron cargar las opciones de creación'); return; }
-    WZ.spec = { name: '', gender: 'f', race: null, cls: null, background: null, kit: null, style: null, ancestry: null, method: 'array', base: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, plus1: [], skills: [], anySkills: [], expertise: [], cantrips: [], spells: [], elfCantrip: null, portrait: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], bio: '' };
+    if (typeof Choices === 'undefined') { toast('No se pudieron cargar las reglas de creación'); return; }
+    WZ.spec = { name: '', gender: 'f', cls: null, background: null, species: null, kit: null, method: 'array', base: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, bgPlus: {}, choices: {}, portrait: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], bio: '' };
     WZ.step = 0; WZ.busy = false;
     $('#wzBody')._html = null;
     wRender();
@@ -1035,7 +1080,7 @@
     WZ.busy = true; $('#wzCreate').disabled = true;
     const s = WZ.spec;
     const { _por, ...rest } = s;
-    const spec = { ...rest, name: s.name.trim(), style: s.style || undefined, ancestry: s.ancestry || undefined, plus1: s.plus1.length ? s.plus1 : undefined };
+    const spec = { ...rest, name: s.name.trim() };
     const ok = await send({ type: 'create', spec });
     WZ.busy = false; $('#wzCreate').disabled = false;
     if (ok) { $('#createDialog').close(); toast(`¡${s.name.trim()} se une a la mesa!`, true); }

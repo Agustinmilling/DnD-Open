@@ -1,5 +1,5 @@
 // Aventura original: "La Sombra bajo Robledal" (para 1-4 personajes de nivel 1 a 3).
-// Historia y personajes originales. Monstruos y reglas: SRD 5.1.
+// Historia y personajes originales. Monstruos y reglas: SRD 5.2.1.
 //
 // Estructura de una escena:
 //   text:   párrafos (string o { if: (flags) => bool, text })
@@ -185,7 +185,7 @@ module.exports = {
         { id: 'trap', label: 'Examinar el suelo de la escalera (Investigación o Percepción CD 13)', skill: 'investigation', altSkill: 'perception', dc: 13, advIf: ['knowsTraps'],
           success: { text: 'Descubres losas ligeramente hundidas: placas de presión conectadas a dardos ocultos. Las marcáis con tiza para esquivarlas.', flags: ['trapFound'], xp: 25 },
           fail: { text: 'La escalera parece segura... aparentemente.' } },
-        { id: 'arcana', label: 'Leer las runas de las estatuas (Arcanos o Religión CD 12)', skill: 'arcana', altSkill: 'religion', dc: 12,
+        { id: 'arcana', label: 'Leer las runas de las estatuas (Conocimiento arcano o Religión CD 12)', skill: 'arcana', altSkill: 'religion', dc: 12,
           success: { text: 'Las runas son una oración funeraria: "Aquí duerme Hurgen el Glotón, maldito por devorar a sus hermanos. Que la piedra lo contenga." Algo hambriento os espera abajo.', flags: ['knowsUndead'], xp: 25 },
           fail: { text: 'Las runas están demasiado erosionadas para leerlas.' } },
         { id: 'pray', label: 'Rezar ante el altar del yunque (Religión CD 13)', skill: 'religion', dc: 13, hideIf: ['blessedAltar'],
@@ -245,7 +245,7 @@ module.exports = {
       ],
       shortRest: true,
       checks: [
-        { id: 'runes', label: 'Activar las runas de apertura (Religión o Arcanos CD 13)', skill: 'religion', altSkill: 'arcana', dc: 13, hideIf: ['doorOpen'], retry: true,
+        { id: 'runes', label: 'Activar las runas de apertura (Religión o Conocimiento arcano CD 13)', skill: 'religion', altSkill: 'arcana', dc: 13, hideIf: ['doorOpen'], retry: true,
           success: { text: 'Recitas la oración enana correcta y la puerta se desliza en silencio. Nadie al otro lado se ha dado cuenta.', flags: ['doorOpen'], xp: 50 },
           fail: { text: 'Las runas parpadean y se apagan. Quizá otra persona tenga más suerte.' } },
         { id: 'lock', label: 'Forzar el mecanismo (Juego de manos CD 14)', skill: 'sleight', dc: 14, hideIf: ['doorOpen'], retry: true,

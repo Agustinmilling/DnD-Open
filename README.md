@@ -1,9 +1,9 @@
 # 🎲 Mesa de Dados
 
-Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edición** (SRD 5.1) entre varias personas, desde el navegador.
+Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edición** (SRD 5.2.1) entre varias personas, desde el navegador.
 
 - **Salas multijugador** con código de invitación (1 a 4 jugadores; los demás pueden mirar).
-- **Creación de personaje** con asistente paso a paso: las 9 razas del SRD (con linaje dracónico, +1 libres del semielfo, truco de alto elfo…), 4 clases (Guerrero con 3 estilos de combate, Clérigo, Pícaro y Mago), 12 trasfondos, serie estándar o compra de 27 puntos, habilidades, pericia, trucos, conjuros, equipo, retrato y color. También hay un botón **🎲 Al azar** y 4 personajes pre-hechos.
+- **Creación de personaje** con asistente paso a paso y reglas de 2024: las 12 clases del SRD 5.2.1 con su subclase a nivel 3, 9 especies con sus linajes, 12 trasfondos con su dote de origen (+2/+1 o +1/+1/+1 a sus características), serie estándar o compra de 27 puntos, habilidades, pericia, maestrías de armas, trucos, conjuros preparados, equipo, retrato y color. También hay un botón **🎲 Al azar** y personajes pre-hechos.
 - **Tres aventuras originales** que elige el anfitrión en el lobby:
   - *La Sombra bajo Robledal* (1-2 h): criptas enanas, goblins y un necrófago. Para empezar.
   - *Los Fuegos de Punta Gaviota* (2-3 h, 4 finales): un faro apagado, contrabandistas y un culto marino. Tres pistas en el orden que queráis (cada desvío cuesta tiempo), una capitana que puede ser aliada, presa o enemiga, y si os derrotan despertáis prisioneros en su barco.
@@ -14,7 +14,7 @@ Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edici
 - **Combate por turnos** con iniciativa, sorpresa, acción / acción adicional / reacción, críticos, salvaciones contra muerte, concentración, condiciones y una IA sencilla para los enemigos.
 - **Progresión**: experiencia por enemigos e hitos, subida de nivel automática (niveles 1 → 3) con nuevos PG, rasgos, conjuros y espacios.
 - **Interfaz ilustrada y animada**: cada escena tiene su ilustración y partículas (lluvia, luciérnagas, niebla, ascuas…), dados d20 que ruedan en pantalla, números de daño y curación, barras de vida animadas, sellos de «¡Combate!», «¡Victoria!» y «Tu turno», y una pantalla de subida de nivel. El botón ✨ Animaciones las desactiva (también respeta la preferencia de «reducir movimiento» del sistema).
-- **Glosario** flotante con buscador (también en `/glosario`): reglas básicas, habilidades, rasgos y pasivas, objetos, conjuros, condiciones, criaturas, razas, clases y trasfondos. Se puede mover, ampliar (doble clic en la cabecera) y recuerda su posición.
+- **Glosario** flotante con buscador (también en `/glosario`): reglas básicas, habilidades, rasgos y pasivas, objetos, conjuros, condiciones, criaturas, especies, clases, trasfondos y dotes. Se puede mover, ampliar (doble clic en la cabecera) y recuerda su posición.
 
 No necesita base de datos ni dependencias: solo Node.js.
 
@@ -50,20 +50,19 @@ El servidor tiene que ser accesible desde internet. Opciones sencillas:
 6. Haz clic en cualquier personaje para ver su ficha. El **📜 Diario** (columna del grupo) recoge lo que habéis descubierto.
 7. Al terminar, el anfitrión puede volver a la sala para elegir otra aventura o probar otro camino hacia un final distinto.
 
-## Reglas implementadas (SRD 5.1)
+## Reglas implementadas (reglas de 2024, SRD 5.2.1)
 
-- Pruebas de característica y habilidad, competencia y pericia, pruebas de grupo, ventaja/desventaja.
+- **Personajes**: las 12 clases del SRD (bárbaro, bardo, brujo, clérigo, druida, explorador, guerrero, hechicero, mago, monje, paladín y pícaro), niveles 1 a 3, con la subclase del SRD en el nivel 3 (Berserker, Conocimiento, Vida, Tierra, Campeón, Mano abierta, Entrega, Cazador, Ladrón, Dracónica, Infernal y Evocador).
+- **Origen**: 9 especies (dracónido, elfo, enano, gnomo, goliat, humano, mediano, orco y tiflin) con sus linajes; trasfondos que dan +2/+1 o +1/+1/+1 a tres características, dos habilidades y una dote de origen (Alerta, Atacante salvaje, Habilidoso, Iniciado en la magia).
+- Pruebas d20 con competencia y pericia, pruebas de grupo, ventaja y desventaja, inspiración heroica.
 - Iniciativa, sorpresa (Percepción pasiva contra Sigilo), acción, acción adicional y reacción.
-- Ataques con arma y de conjuro, críticos (y Crítico mejorado del Campeón), armas sutiles y a distancia, combate con dos armas ligeras, Empujar (prueba enfrentada de Atletismo para derribar).
-- Resistencias, vulnerabilidades e inmunidades (también de los personajes: enanos y veneno, tiflin y fuego, dracónidos según linaje); Fortaleza de muerto viviente del zombi.
-- Rasgos raciales con efecto: Arma de aliento, Astucia gnoma, Aguante incansable y Ataques salvajes del semiorco, Reprensión infernal del tiflin (automática), Resistencia enana…
-- 29 criaturas del SRD con ataque múltiple, Parada, veneno, telarañas que apresan, Ventaja marcial, Frenesí sanguinario y conjuros limitados.
-- Condiciones: derribado, paralizado, inconsciente, envenenado, asustado, agotamiento…, más efectos como Esquivando, Bendecido, Escondido.
-- 0 PG, salvaciones contra muerte, estabilizar, daño masivo.
-- Concentración (salvación de CON al recibir daño), regla de conjuros con acción adicional.
-- Espacios de conjuro, descanso corto con dados de golpe, Recuperación arcana.
-- Rasgos: Tomar aliento, Acción súbita, Ataque furtivo, Acción astuta (Esconderse), Manos rápidas, Discípulo de la vida, Canalizar divinidad (Expulsar muertos vivientes y Preservar la vida), Afortunado, Linaje feérico…
-- Conjuros con efecto mecánico: Descarga de fuego, Rayo de escarcha, Llama sagrada, Piedad con los moribundos, Orientación, Proyectil mágico, Manos ardientes, Dormir, Escudo (reacción automática), Armadura de mago, Curar heridas, Palabra de curación, Bendición, Saeta guía, Escudo de fe, Rayo abrasador, Inmovilizar persona, Arma espiritual, Restablecimiento menor, Agarre electrizante, Toque helado, Onda atronadora, Infligir heridas, Romper, Ayuda y Taumaturgia.
+- Ataques con arma y de conjuro, críticos, armas sutiles, ligeras y a distancia, **maestría de armas** (Debilitar, Molestar, Derribar, Empujar, Ralentizar, Hendir, Rozar y Mellar), Empujar (salvación de FUE o DES), Esconderse (CD 15).
+- Un solo espacio de conjuro por turno, conjuros preparados, magia de pacto, metamagia, invocaciones, Forma salvaje con bestias del SRD.
+- Resistencias, vulnerabilidades e inmunidades de criaturas y personajes.
+- 49 criaturas del SRD 5.2.1 con ataque múltiple, recarga, alientos, agarres, drenaje, veneno, conjuros limitados y tácticas de manada.
+- Condiciones del glosario de reglas, agotamiento de 2024 (−2 por nivel a las pruebas d20), 0 PG, salvaciones contra muerte, estabilizar, daño masivo.
+- Concentración (salvación de CON al recibir daño), descanso corto con dados de golpe.
+- Pociones: beber es una acción adicional y dársela a otro, una acción.
 
 ### Simplificaciones y reglas de la casa
 
@@ -79,13 +78,15 @@ El servidor tiene que ser accesible desde internet. Opciones sencillas:
 
 ```
 server.js              Servidor HTTP + API + tiempo real (Server-Sent Events), sin dependencias
-src/engine.js          Motor: salas, escenas, pruebas, combate, IA de enemigos, progresión
+src/engine.js          Motor: salas, escenas, pruebas, descansos, progresión
+src/combat.js          Combate: turnos, ataques, daño, condiciones e IA de los monstruos
+src/actions.js         Acciones de los personajes: rasgos de clase, conjuros y objetos
 src/character.js       Personajes: estadísticas derivadas, CA, ataques, subida de nivel
 src/dice.js            Tiradas de dados (notación XdY+Z, kh/kl, ventaja)
 src/rules.js           Reglas básicas: modificadores, competencia, tabla de PX
 src/glossary.js        Genera el glosario a partir de los datos
 src/creation.js        Datos para el asistente de creación de personaje (/api/creation)
-src/data/              Habilidades, condiciones, conjuros, objetos, rasgos, razas, clases, trasfondos, personajes y monstruos
+src/data/              Habilidades, condiciones, conjuros, objetos, rasgos, especies, clases, trasfondos, maestrías, bestias, personajes y monstruos
 src/data/adventures/   Las aventuras (una por archivo) e index.js, que las registra
 public/                Interfaz web (HTML/CSS/JS sin frameworks), glosario y fx.js (ilustraciones SVG, partículas y animaciones)
 scripts/               Túnel público y servicios de systemd (ver «Jugar por internet»)
@@ -93,6 +94,8 @@ render.yaml            Configuración para desplegar en Render
 test/validate-adventures.js  Revisión estática de las aventuras (npm run check)
 docs/formato-aventuras.md    Referencia del formato de aventuras
 .claude/agents/        Agentes de Claude Code para crear historias (ver abajo)
+test/monsters.js       Enfrenta cada criatura a grupos al azar y comprueba que el combate termina bien
+test/bot.js            Bot que juega turnos de combate (lo usan las pruebas)
 test/playthrough.js    Simula 120 partidas con bots (las 3 aventuras, 1-4 jugadores, personajes creados al azar) y comprueba que se llega a un final en nivel 3 (npm test; N=25 npm test para más)
 ```
 
@@ -134,6 +137,6 @@ Más detalles en `inspiracion/README.md`. Los agentes aprenden técnicas de las 
 
 Código: MIT (ver `LICENSE`).
 
-Este proyecto incluye material del *System Reference Document 5.1* («SRD 5.1») de Wizards of the Coast LLC, disponible en <https://dnd.wizards.com/resources/systems-reference-document>. El SRD 5.1 está bajo la licencia Creative Commons Attribution 4.0 International, disponible en <https://creativecommons.org/licenses/by/4.0/legalcode>. El material se ha traducido al español, resumido y adaptado.
+Este proyecto incluye material del *System Reference Document 5.2.1* («SRD 5.2.1») de Wizards of the Coast LLC, disponible en <https://www.dndbeyond.com/srd>. El SRD 5.2.1 está bajo la licencia Creative Commons Attribution 4.0 International, disponible en <https://creativecommons.org/licenses/by/4.0/legalcode>. Los textos parten de la versión oficial en español del SRD 5.2.1 y se han resumido y adaptado.
 
-Las aventuras *La Sombra bajo Robledal*, *Los Fuegos de Punta Gaviota* y *El Sello de Ámbar*, sus personajes no jugadores, lugares y los personajes pre-hechos (nombres e historias) son originales de este proyecto. Los trasfondos distintos del Acólito son genéricos de este proyecto. Proyecto no oficial, sin relación con Wizards of the Coast.
+Las aventuras *La Sombra bajo Robledal*, *Los Fuegos de Punta Gaviota* y *El Sello de Ámbar*, sus personajes no jugadores, lugares y los personajes pre-hechos (nombres e historias) son originales de este proyecto. Los trasfondos distintos de Acólito, Criminal, Erudito y Soldado son genéricos de este proyecto. Proyecto no oficial, sin relación con Wizards of the Coast.

@@ -1,5 +1,5 @@
 // Aventura original: "Los Fuegos de Punta Gaviota" (para 1-4 personajes de nivel 1 a 3).
-// Historia y personajes originales. Monstruos y reglas: SRD 5.1.
+// Historia y personajes originales. Monstruos y reglas: SRD 5.2.1.
 //
 // Ramificaciones principales:
 //   - Tres pistas iniciales (faro, naufragio, taberna) en cualquier orden. Cada desvío suma tiempo (contador `time`);
@@ -146,7 +146,7 @@ module.exports = {
         { id: 'diary', label: 'Registrar el cuarto de la farera (Investigación CD 11)', skill: 'investigation', dc: 11, hideIf: ['knowsStairs'],
           success: { text: 'Bajo el colchón, el diario de Ilse Varo habla de una vieja escalera de contrabandistas que baja desde el sótano hasta la gruta. El sótano tiene una trampilla tapada con sacos.', flags: ['knowsStairs', 'knowsGrotto'], xp: 25 },
           fail: { text: 'Solo encontráis mantas, un gato de porcelana y muchas cartas de amor sin enviar.' } },
-        { id: 'lens', label: 'Limpiar la lente y volver a encender el faro (Arcanos o Juego de manos CD 12)', skill: 'arcana', altSkill: 'sleight', dc: 12, hideIf: ['lightOn'], retry: true,
+        { id: 'lens', label: 'Limpiar la lente y volver a encender el faro (Conocimiento arcano o Juego de manos CD 12)', skill: 'arcana', altSkill: 'sleight', dc: 12, hideIf: ['lightOn'], retry: true,
           success: { text: 'Raspáis la brea, ajustáis el mecanismo y prendéis la mecha. Un haz de luz blanca barre el mar. Abajo, en el pueblo, alguien grita de alegría.', flags: ['lightOn'], inc: { trust: 1 }, xp: 50 },
           fail: { text: 'La brea se resiste y el mecanismo se atasca. Quizá otra mano tenga más suerte.' } },
         { id: 'slowlight', label: 'Encenderlo a la antigua, con aceite y paciencia (seguro, pero lento)', auto: true, hideIf: ['lightOn'],

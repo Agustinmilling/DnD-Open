@@ -1,4 +1,4 @@
-// Reglas básicas de 5ª edición (SRD 5.1)
+// Reglas básicas de 5ª edición (SRD 5.2.1)
 const ABILITIES = {
   str: { name: 'Fuerza', short: 'FUE' },
   dex: { name: 'Destreza', short: 'DES' },

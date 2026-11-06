@@ -6,61 +6,16 @@ const { roll } = require('../src/dice');
 const C = require('../src/character');
 const ADVENTURES = require('../src/data/adventures');
 
-function botTurn(room, pid) {
-  const v = room.viewFor(pid);
-  const acts = v.combat.actions;
-  const me = v.pcs.find((p) => p.id === v.you.charId);
-  const enemies = v.combat.enemies.filter((e) => !e.dead);
-  const down = v.pcs.find((p) => p.down && !p.stable);
-  const hurt = v.pcs.filter((p) => !p.dead && p.hp < p.maxHp / 2).sort((a, b) => a.hp - b.hp)[0];
-  const pick = (pred) => acts.find(pred);
-  let a =
-    (down && pick((x) => x.key === 'spell:healing_word')) ||
-    (down && pick((x) => x.key === 'spell:cure_wounds')) ||
-    (hurt && hurt.id === me.id && pick((x) => x.key === 'second_wind')) ||
-    (hurt && pick((x) => x.key.startsWith('item:potion'))) ||
-    pick((x) => x.key === 'action_surge') ||
-    pick((x) => x.key === 'spell:bless' && !me.concentration) ||
-    pick((x) => x.key === 'spell:spiritual_weapon') ||
-    pick((x) => x.key === 'spiritual_attack') ||
-    pick((x) => x.key === 'offhand') ||
-    (Math.random() < 0.1 && pick((x) => x.key === 'shove')) ||
-    pick((x) => x.key === 'hide') ||
-    (enemies.length >= 2 && pick((x) => x.key === 'spell:sleep')) ||
-    (enemies.some((e) => e.mtype === 'humanoide') && pick((x) => x.key === 'spell:hold_person' && !me.concentration)) ||
-    (enemies.some((e) => e.mtype === 'muerto viviente') && pick((x) => x.key === 'turn_undead')) ||
-    (enemies.length >= 2 && pick((x) => x.key === 'breath')) ||
-    (enemies.length >= 2 && pick((x) => x.key === 'spell:thunderwave' || x.key === 'spell:shatter')) ||
-    pick((x) => x.key === 'spell:scorching_ray') ||
-    pick((x) => x.key === 'spell:magic_missile') ||
-    pick((x) => x.key === 'spell:guiding_bolt') ||
-    pick((x) => x.key === 'attack:0' && me.className !== 'Mago') ||
-    pick((x) => x.key === 'spell:fire_bolt') ||
-    pick((x) => x.key === 'spell:chill_touch' || x.key === 'spell:shocking_grasp' || x.key === 'spell:inflict_wounds') ||
-    pick((x) => x.key === 'spell:sacred_flame') ||
-    pick((x) => x.key === 'spell:ray_of_frost') ||
-    pick((x) => x.key.startsWith('spell:') && ['enemy', 'enemies3'].includes(x.target) && !['spell:hold_person', 'spell:sleep'].includes(x.key)) ||
-    pick((x) => x.key === 'attack:0') ||
-    pick((x) => x.key === 'end');
-  let targets = [];
-  if (['enemy', 'enemies3'].includes(a.target)) {
-    let pool = enemies;
-    if (a.key === 'spell:hold_person') pool = enemies.filter((e) => e.mtype === 'humanoide');
-    targets = pool.slice(0, a.maxTargets || 1).map((e) => e.id);
-  } else if (a.target === 'dying') targets = [down.id];
-  else if (a.target === 'allies') targets = v.pcs.filter((p) => !p.dead).slice(0, 3).map((p) => p.id);
-  else if (['ally', 'allyAny', 'allyOther'].includes(a.target)) targets = [(down || hurt || me).id];
-  room.handle(pid, { type: 'act', key: a.key, targets });
-}
+const { botTurn, botExplore, stats } = require('./bot');
 
 function play(nPlayers, advId, verbose = false) {
   const room = new Room('TEST' + Math.floor(Math.random() * 1e6), { delay: 0 });
   const chars = ['darian', 'brenna', 'lia', 'ithriel'].slice(0, nPlayers);
-  const custom = Math.random() < 0.5;
+  const custom = Math.random() < 0.7;
   const pids = chars.map((c, i) => {
     const { pid } = room.join('Bot' + i);
     room.players[pid].connected = true;
-    if (custom && i % 2 === 0) room.handle(pid, { type: 'create', spec: 'random' });
+    if (custom && (i % 2 === 0 || Math.random() < 0.5)) room.handle(pid, { type: 'create', spec: C.randomSpec(Math.random, { cls: CLASS_IDS[(classCursor++) % CLASS_IDS.length] }) });
     else room.handle(pid, { type: 'pick', charId: c });
     return pid;
   });
@@ -88,13 +43,8 @@ function play(nPlayers, advId, verbose = false) {
     if (!v.scene) { defeats++; room.enterScene(room.sceneId); continue; } // derrota pendiente (con delay 0 ya se reinició)
     // curarse fuera de combate
     for (const pid of pids) {
-      const pv = room.viewFor(pid);
-      const me = pv.pcs.find((p) => p.id === pv.you.charId);
-      const cure = pv.exploreActions.find((x) => x.key === 'spell:cure_wounds');
-      const hurt = pv.pcs.find((p) => !p.dead && p.hp < p.maxHp / 2);
-      if (cure && hurt) room.handle(pid, { type: 'explore', key: cure.key, targets: [hurt.id] });
-      for (const l of pv.party.loot) room.handle(pid, { type: 'take', item: l.id });
-      void me;
+      botExplore(room, pid);
+      for (const l of room.viewFor(pid).party.loot) room.handle(pid, { type: 'take', item: l.id });
     }
     if (v.scene.shortRest && room.activePCs().some((p) => p.hp < p.maxHp * 0.75)) room.handle(pids[0], { type: 'rest' });
     // tienda: comprar una poción si sobra oro
@@ -136,10 +86,12 @@ function play(nPlayers, advId, verbose = false) {
     console.log('RUTA:', path);
     for (const l of room.log.slice(-25)) console.log(`  [${l.kind}] ${l.text.slice(0, 160)}`);
   }
+  const badLog = room.log.find((l) => /undefined|NaN|\[object/.test(l.text));
+  assert.ok(!badLog, 'texto roto en el registro: ' + (badLog && badLog.text));
   assert.strictEqual(room.phase, 'ended', 'la aventura debería terminar (' + advId + ' en ' + room.sceneId + ')');
   const endKey = advId + ':' + room.sceneId;
   stats.endings[endKey] = (stats.endings[endKey] || 0) + 1;
-  for (const p of room.partyPCs()) stats.races[C.TEMPLATES[p.templateId].race.split(' (')[0]] = 1;
+  for (const p of room.partyPCs()) { stats.races[C.TEMPLATES[p.templateId].race.split(' (')[0]] = 1; stats.classes[C.TEMPLATES[p.templateId].cls] = 1; }
   room.dispose();
   for (const p of room.partyPCs()) assert.strictEqual(p.level, 3, p.name + ' debería acabar en nivel 3 (' + p.xp + ' PX)');
   const lv = room.partyPCs().map((p) => `${p.name.split(' ')[0]} nv${p.level} ${p.xp}PX ${p.hp}/${p.maxHp}`);
@@ -147,7 +99,9 @@ function play(nPlayers, advId, verbose = false) {
 }
 
 assert.ok(roll('2d6+3').total >= 5);
-const stats = { scenes: {}, encounters: {}, endings: {}, races: {}, defeatAt: {} };
+Object.assign(stats, { scenes: {}, encounters: {}, endings: {}, races: {}, classes: {}, defeatAt: {} });
+const CLASS_IDS = Object.keys(require('../src/data/classes'));
+let classCursor = Math.floor(Math.random() * CLASS_IDS.length);
 const verbose = process.argv.includes('-v');
 const only = process.argv.find((a) => ADVENTURES[a]);
 const N = verbose ? 1 : Number(process.env.N || 10);
@@ -161,5 +115,7 @@ for (const advId of only ? [only] : Object.keys(ADVENTURES)) {
 console.log('Encuentros:', JSON.stringify(stats.encounters));
 console.log('Finales:', JSON.stringify(stats.endings));
 console.log('Derrotas por escena:', JSON.stringify(stats.defeatAt));
-console.log('Razas usadas:', Object.keys(stats.races).join(', '));
+console.log('Especies usadas:', Object.keys(stats.races).join(', '));
+console.log('Clases usadas:', Object.keys(stats.classes).join(', '));
+if (process.env.ACTIONS) console.log('Acciones usadas:', Object.keys(stats.actions).sort().join(' '));
 console.log('✔ Todas las partidas simuladas terminaron correctamente.');
