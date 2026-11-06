@@ -18,7 +18,7 @@ function record(kind, e, ctx) {
 function randomMsg(room, pid) {
   let v;
   try { v = room.viewFor(pid); } catch (e) { record('viewFor', e, {}); return { type: 'chat', text: 'x' }; }
-  const t = R(['chat', 'roll', 'pick', 'release', 'start', 'adventure', 'create', 'deleteChar', 'check', 'vote', 'rest', 'explore', 'take', 'buy', 'act', 'act', 'act', 'act', 'restart', 'bogus']);
+  const t = R(['chat', 'roll', 'pick', 'release', 'start', 'adventure', 'create', 'deleteChar', 'check', 'vote', 'rest', 'explore', 'take', 'buy', 'act', 'act', 'act', 'act', 'restart', 'music', 'music', 'bogus']);
   const valid = Math.random() < 0.75;
   switch (t) {
     case 'chat': return { type: t, text: valid ? R(['hola', '/r 1d20+3', '/roll 2d6 adv', '/r 50d1000', '/r 1d0', '/r d']) : junk() };
@@ -41,6 +41,7 @@ function randomMsg(room, pid) {
       }
       return { type: t, key: R(['end', 'attack:0', 'attack:9', 'spell:fire_bolt', 'dash', junk()]), targets: R([junk(), ['e1'], ['e1', 'e1', 'e1', 'e1', 'e1']]) };
     }
+    case 'music': return { type: t, op: R(['add', 'add', 'play', 'pause', 'seek', 'next', 'prev', 'jump', 'remove', 'clear', junk()]), text: R(['dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=abcdefghijk', 'list=PLx', junk()]), pos: R([0, 12.5, 90000, -1, junk()]), index: R([0, 1, 5, 25, -1, 1.5, junk()]) };
     default: return { type: t };
   }
 }
@@ -68,6 +69,8 @@ for (let g = 0; g < N; g++) {
       for (const [l, n] of Object.entries(pc.slots || {})) if (!(n >= 0)) record('inv', new Error(`espacios negativos nivel ${l}: ${n}`), msg);
     }
     if (!(room.party && room.party.gold >= 0)) record('inv', new Error(`oro imposible ${room.party && room.party.gold}`), msg);
+    const mu = room.music;
+    if (mu.queue.length > 20 || !Number.isInteger(mu.index) || mu.index < 0 || mu.index >= Math.max(1, mu.queue.length) || !(mu.pos >= 0) || !mu.queue.every((id) => /^[A-Za-z0-9_-]{11}$/.test(id))) record('inv', new Error(`música imposible ${JSON.stringify(mu)}`), msg);
     if (room.phase === 'ended') { ended++; break; }
   }
   room.dispose();

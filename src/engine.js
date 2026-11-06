@@ -54,13 +54,18 @@ function sanitizeMsg(msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error('Mensaje no válido');
   if (typeof msg.type !== 'string') throw new Error('Acción desconocida');
   const out = { type: msg.type };
-  for (const k of ['charId', 'id', 'checkId', 'item', 'key', 'expr', 'mode', 'target']) {
+  for (const k of ['charId', 'id', 'checkId', 'item', 'key', 'expr', 'mode', 'target', 'op']) {
     if (msg[k] === undefined || msg[k] === null) continue;
     if (typeof msg[k] !== 'string' || msg[k].length > 80 || isBadKey(msg[k])) throw new Error('Datos no válidos');
     out[k] = msg[k];
   }
   if (msg.text !== undefined) out.text = String(msg.text ?? '');
   if (msg.label !== undefined && msg.label !== null) out.label = String(msg.label);
+  for (const k of ['pos', 'index']) {
+    if (msg[k] === undefined || msg[k] === null) continue;
+    if (typeof msg[k] !== 'number' || !Number.isFinite(msg[k])) throw new Error('Datos no válidos');
+    out[k] = msg[k];
+  }
   if (msg.exit !== undefined) {
     const e = Number(msg.exit);
     if (!Number.isInteger(e) || e < 0 || e > 50) throw new Error('Esa opción no está disponible ahora');
@@ -87,6 +92,22 @@ function sanitizeMsg(msg) {
   return out;
 }
 
+// Enlace o id de YouTube -> id de 11 caracteres (o null). Las listas (list=) no se soportan.
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be'];
+function youtubeId(text) {
+  text = String(text || '').trim().slice(0, 200);
+  if (YT_ID.test(text)) return text;
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text); } catch { return null; }
+  if (!YT_HOSTS.includes(u.hostname.toLowerCase())) return null;
+  const parts = u.pathname.split('/').filter(Boolean);
+  const id = u.hostname.toLowerCase().endsWith('youtu.be') ? parts[0]
+    : u.pathname === '/watch' ? u.searchParams.get('v')
+      : ['shorts', 'live', 'embed'].includes(parts[0]) ? parts[1] : null;
+  return YT_ID.test(id || '') ? id : null;
+}
+
 class Room {
   constructor(code, opts = {}) {
     this.afkMs = opts.afkMs || AFK_MS;
@@ -111,6 +132,7 @@ class Room {
     this.customIds = []; // personajes creados en esta sala
     this.retries = {}; // escena -> derrotas seguidas (regla de la casa)
     this.rewarded = {}; // escenas cuya recompensa ya se cobró
+    this.music = { queue: [], index: 0, playing: false, pos: 0, at: 0 }; // cola de ids de YouTube; cada navegador reproduce la suya
     this.version = 0;
     this.conns = {}; // pid -> conexiones SSE abiertas (lo usa server.js)
     this.pollSeen = {}; // pid -> última vez que sondeó (lo usa server.js)
@@ -241,7 +263,69 @@ class Room {
       case 'buy': return this.doBuy(player, pc, msg.item);
       case 'act': return this.doCombatAction(player, pc, msg);
       case 'restart': return this.restartAdventure(player);
+      case 'music': return this.doMusic(player, msg);
       default: throw new Error('Acción desconocida');
+    }
+  }
+
+  musicPos() {
+    const m = this.music;
+    return m.playing ? m.pos + (Date.now() - m.at) / 1000 : m.pos;
+  }
+
+  doMusic(player, msg) {
+    if (player.id !== this.hostId) throw new Error('Solo el anfitrión controla la música');
+    const m = this.music;
+    const now = Date.now();
+    const validIndex = () => {
+      if (!Number.isInteger(msg.index) || msg.index < 0 || msg.index >= m.queue.length) throw new Error('Pista no válida');
+      return msg.index;
+    };
+    const goto = (i) => { m.index = i; m.pos = 0; m.at = now; m.playing = true; };
+    switch (msg.op) {
+      case 'add': {
+        const id = youtubeId(msg.text);
+        if (!id) throw new Error('Pega el enlace de un vídeo de YouTube');
+        if (m.queue.length >= 20) throw new Error('La lista de música está llena');
+        m.queue.push(id);
+        if (m.queue.length === 1) goto(0);
+        break;
+      }
+      case 'play': case 'pause': {
+        if (!m.queue.length) break;
+        const play = msg.op === 'play';
+        if (play === m.playing) break;
+        m.pos = this.musicPos();
+        m.at = now;
+        m.playing = play;
+        break;
+      }
+      case 'seek':
+        if (typeof msg.pos !== 'number' || msg.pos < 0 || msg.pos > 86400) throw new Error('Posición no válida');
+        if (!m.queue.length) break;
+        m.pos = msg.pos;
+        m.at = now;
+        break;
+      case 'next':
+        if (!m.queue.length) break;
+        if (m.index + 1 < m.queue.length) goto(m.index + 1);
+        else { m.playing = false; m.pos = 0; m.at = now; }
+        break;
+      case 'prev':
+        if (!m.queue.length) break;
+        goto(Math.max(0, m.index - 1));
+        break;
+      case 'jump': goto(validIndex()); break;
+      case 'remove': {
+        const i = validIndex();
+        m.queue.splice(i, 1);
+        if (!m.queue.length) { m.index = 0; m.playing = false; m.pos = 0; m.at = now; }
+        else if (i < m.index) m.index--;
+        else if (i === m.index) { if (m.index >= m.queue.length) m.index = m.queue.length - 1; m.pos = 0; m.at = now; }
+        break;
+      }
+      case 'clear': this.music = { queue: [], index: 0, playing: false, pos: 0, at: now }; break;
+      default: throw new Error('Acción de música desconocida');
     }
   }
 
@@ -805,6 +889,7 @@ class Room {
       party: { gold: this.party.gold, loot: Object.entries(this.party.loot).map(([id, n]) => ({ id, name: ITEMS[id].name, qty: n, desc: ITEMS[id].desc })) },
       log: this.log.slice(-200),
       chat: this.chat.slice(-120),
+      music: { queue: this.music.queue.slice(), index: this.music.index, playing: this.music.playing, pos: Math.round(Math.min(this.musicPos(), 86400) * 10) / 10 },
     };
     if (def && this.phase !== 'lobby') {
       const n = this.partyPCs().length;
