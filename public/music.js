@@ -10,7 +10,9 @@ const Music = (() => {
     101: 'el autor no permite reproducirla fuera de YouTube', 153: 'YouTube rechazó el reproductor (configuración/referer)', 150: 'el autor no permite reproducirla fuera de YouTube',
   };
   let io = null;                    // { send, toast } los pone app.js
-  let m = { queue: [], index: 0, playing: false, pos: 0, at: 0 }; // última vista recibida (at = cuándo)
+  let m = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; // última vista recibida (at = cuándo)
+  let editing = -1;                 // fila del anfitrión cuyo nombre se está editando (-1 = ninguna)
+  const NAME_MAX = 40;
   let inRoom = false, isHost = false, open = false, unlocked = false;
   let api = 'idle';                 // idle | loading | ready | failed
   let player = null, ready = false;
@@ -27,6 +29,7 @@ const Music = (() => {
   const expected = () => m.pos + (m.playing ? (Date.now() - m.at) / 1000 : 0);
   const act = (op, extra) => io.send({ type: 'music', op, ...extra });
   const trackKey = () => (m.queue[m.index] ? `${m.index}:${m.queue[m.index]}` : '');
+  const nameOf = (i) => m.names[i] || '';
   const title = () => { try { return (ready && cur.key === trackKey() && player.getVideoData().title) || ''; } catch { return ''; } };
 
   // ---------------------------------------------------------------- API de YouTube (carga perezosa)
@@ -59,7 +62,7 @@ const Music = (() => {
         },
         onError: (e) => {
           const why = ERRORS[e.data] || 'error desconocido';
-          errKey = cur.key; errText = `La pista ${m.index + 1} no se puede reproducir: ${why}.`;
+          errKey = cur.key; errText = `${nameOf(m.index) ? '«' + nameOf(m.index) + '»' : 'La pista ' + (m.index + 1)} no se puede reproducir: ${why}.`;
           if (isHost && cur.key && doneKey !== cur.key) {
             doneKey = cur.key;
             if (++fails >= Math.min(m.queue.length, 3)) { fails = 0; io.toast('Ninguna pista se pudo reproducir. ' + errText); act('pause'); } // corta la cascada de "siguiente"
@@ -98,12 +101,15 @@ const Music = (() => {
   /** Lo llama app.js con cada vista (o con null al volver al inicio). */
   function update(v) {
     inRoom = !!v;
-    if (!v) { setOpen(false); if (ready && cur.key) player.stopVideo(); cur = { key: '', playing: false }; m = { queue: [], index: 0, playing: false, pos: 0, at: 0 }; return paint(); }
+    if (!v) { setOpen(false); if (ready && cur.key) player.stopVideo(); cur = { key: '', playing: false }; m = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; editing = -1; return paint(); }
     isHost = !!(v.you && v.you.isHost);
     const x = v.music || {}; // la vista no es de fiar del todo: se valida
-    const queue = (Array.isArray(x.queue) ? x.queue : []).filter((id) => typeof id === 'string' && /^[\w-]{11}$/.test(id)).slice(0, 20);
+    const rawNames = Array.isArray(x.names) ? x.names : []; // paralelo a queue; si falta o es corto, sin nombre
+    const pairs = (Array.isArray(x.queue) ? x.queue : []).map((id, i) => [id, typeof rawNames[i] === 'string' ? rawNames[i].trim().slice(0, NAME_MAX) : ''])
+      .filter(([id]) => typeof id === 'string' && /^[\w-]{11}$/.test(id)).slice(0, 20);
+    const queue = pairs.map((p) => p[0]);
     m = {
-      queue, playing: !!x.playing, at: Date.now(),
+      queue, names: pairs.map((p) => p[1]), playing: !!x.playing, at: Date.now(),
       index: Number.isInteger(x.index) && x.index >= 0 && x.index < queue.length ? x.index : 0,
       pos: Number.isFinite(x.pos) && x.pos >= 0 ? x.pos : 0,
     };
@@ -141,7 +147,7 @@ const Music = (() => {
     let status;
     if (api === 'failed') status = 'No se pudo cargar el reproductor de YouTube (¿sin conexión?). El resto de la mesa sigue funcionando.';
     else if (!n) status = isHost ? 'Aún no hay música. Pega un enlace de YouTube para empezar.' : 'El anfitrión aún no puso música.';
-    else status = `Pista ${m.index + 1} de ${n}${t ? ': ' + t : ''} · ${m.playing ? 'sonando' : 'en pausa'}`
+    else status = `${nameOf(m.index) ? nameOf(m.index) + ` (pista ${m.index + 1} de ${n})` : `Pista ${m.index + 1} de ${n}${t ? ': ' + t : ''}`} · ${m.playing ? 'sonando' : 'en pausa'}`
       + (errKey === trackKey() ? '. ' + errText : '') + (unlocked ? '' : '. Activa la música para oírla.');
     if ($('#musicStatus').textContent !== status) $('#musicStatus').textContent = status;
     $('#musicUnlock').classList.toggle('hidden', unlocked || !n || api === 'failed');
@@ -162,20 +168,51 @@ const Music = (() => {
       if (Date.now() - seekAt > 1500) seek.value = Math.min(dur, Math.floor(expected()));
     }
 
-    const sig = JSON.stringify([m.queue, m.index, isHost, t]);
+    if (editing >= 0 && isHost) return; // se está escribiendo un nombre: no repintar la lista hasta terminar
+    editing = -1;
+    const sig = JSON.stringify([m.queue, m.names, m.index, isHost, t]);
     if (sig === listSig) return;
     listSig = sig;
     const ol = $('#musicList');
     ol.replaceChildren(...m.queue.map((_, i) => {
       const now = i === m.index, li = mk('li', now ? 'current' : '');
       if (now) li.setAttribute('aria-current', 'true');
-      li.appendChild(mk('span', 'music-name', `Pista ${i + 1}${now && t ? ': ' + t : ''}`));
+      li.appendChild(mk('span', 'music-name', nameOf(i) || `Pista ${i + 1}${now && t ? ': ' + t : ''}`));
       if (isHost) {
+        const ed = iconBtn('✏️', `Renombrar pista ${i + 1}`, () => startEdit(i));
+        ed.dataset.rename = i; li.appendChild(ed);
         li.appendChild(iconBtn('▶', `Saltar a la pista ${i + 1}`, () => act('jump', { index: i })));
         li.appendChild(iconBtn('✕', `Quitar la pista ${i + 1}`, () => act('remove', { index: i })));
       }
       return li;
     }));
+  }
+
+  // Edición en línea del nombre de una pista (solo anfitrión): un único input a la vez.
+  function startEdit(i) {
+    if (!isHost || editing >= 0) return;
+    const li = $('#musicList').children[i], span = li && li.querySelector('.music-name');
+    if (!span) return;
+    editing = i;
+    const id = m.queue[i], input = mk('input', 'music-edit');
+    input.type = 'text'; input.maxLength = NAME_MAX; input.value = nameOf(i); input.autocomplete = 'off';
+    input.placeholder = `Pista ${i + 1}`; input.setAttribute('aria-label', `Nombre de la pista ${i + 1}`);
+    let done = false;
+    const finish = (save, refocus) => {
+      if (done) return;
+      done = true; editing = -1;
+      const label = input.value.trim().slice(0, NAME_MAX);
+      if (save && m.queue[i] === id && label !== nameOf(i)) act('rename', { index: i, label });
+      listSig = ''; paint(); // repinta con la última vista recibida (el servidor confirmará el nombre)
+      if (refocus) { const b = $('#musicList').querySelector(`[data-rename="${i}"]`); if (b) b.focus(); }
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true, true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false, true); } // no cierra el panel
+    };
+    input.onblur = () => finish(true, false);
+    span.replaceWith(input);
+    input.focus(); input.select();
   }
 
   function init(deps) {
@@ -188,7 +225,8 @@ const Music = (() => {
     $('#musicAdd').onsubmit = async (e) => {
       e.preventDefault();
       const text = $('#musicUrl').value.trim();
-      if (text && await io.send({ type: 'music', op: 'add', text })) $('#musicUrl').value = '';
+      const label = $('#musicName').value.trim().slice(0, NAME_MAX);
+      if (text && await io.send({ type: 'music', op: 'add', text, ...(label ? { label } : {}) })) { $('#musicUrl').value = ''; $('#musicName').value = ''; }
     };
     $('#musicPlay').onclick = () => act(m.playing ? 'pause' : 'play');
     $('#musicPrev').onclick = () => act('prev');

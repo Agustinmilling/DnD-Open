@@ -41,7 +41,7 @@ function randomMsg(room, pid) {
       }
       return { type: t, key: R(['end', 'attack:0', 'attack:9', 'spell:fire_bolt', 'dash', junk()]), targets: R([junk(), ['e1'], ['e1', 'e1', 'e1', 'e1', 'e1']]) };
     }
-    case 'music': return { type: t, op: R(['add', 'add', 'play', 'pause', 'seek', 'next', 'prev', 'jump', 'remove', 'clear', junk()]), text: R(['dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=abcdefghijk', 'list=PLx', junk()]), pos: R([0, 12.5, 90000, -1, junk()]), index: R([0, 1, 5, 25, -1, 1.5, junk()]) };
+    case 'music': return { type: t, op: R(['add', 'add', 'play', 'pause', 'seek', 'next', 'prev', 'jump', 'remove', 'rename', 'rename', 'clear', junk()]), label: R(['Batalla 1', '  Taberna \n\t x ', '', '   ', 'x'.repeat(500), '\u0000\u0007\r\n', '__proto__', undefined, junk()]), text: R(['dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=abcdefghijk', 'list=PLx', junk()]), pos: R([0, 12.5, 90000, -1, junk()]), index: R([0, 1, 5, 25, -1, 1.5, junk()]) };
     default: return { type: t };
   }
 }
@@ -70,7 +70,7 @@ for (let g = 0; g < N; g++) {
     }
     if (!(room.party && room.party.gold >= 0)) record('inv', new Error(`oro imposible ${room.party && room.party.gold}`), msg);
     const mu = room.music;
-    if (mu.queue.length > 20 || !Number.isInteger(mu.index) || mu.index < 0 || mu.index >= Math.max(1, mu.queue.length) || !(mu.pos >= 0) || !mu.queue.every((id) => /^[A-Za-z0-9_-]{11}$/.test(id))) record('inv', new Error(`música imposible ${JSON.stringify(mu)}`), msg);
+    if (mu.queue.length > 20 || !Number.isInteger(mu.index) || mu.index < 0 || mu.index >= Math.max(1, mu.queue.length) || !(mu.pos >= 0) || !mu.queue.every((id) => /^[A-Za-z0-9_-]{11}$/.test(id)) || mu.names.length !== mu.queue.length || !mu.names.every((n) => typeof n === 'string' && n.length <= 40)) record('inv', new Error(`música imposible ${JSON.stringify(mu)}`), msg);
     if (room.phase === 'ended') { ended++; break; }
   }
   room.dispose();

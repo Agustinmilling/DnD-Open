@@ -108,6 +108,11 @@ function youtubeId(text) {
   return YT_ID.test(id || '') ? id : null;
 }
 
+// Nombre de pista: sin caracteres de control, espacios colapsados, máx. 40 caracteres ('' = sin nombre)
+function trackName(text) {
+  return String(text ?? '').slice(0, 400).replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
 class Room {
   constructor(code, opts = {}) {
     this.afkMs = opts.afkMs || AFK_MS;
@@ -132,7 +137,7 @@ class Room {
     this.customIds = []; // personajes creados en esta sala
     this.retries = {}; // escena -> derrotas seguidas (regla de la casa)
     this.rewarded = {}; // escenas cuya recompensa ya se cobró
-    this.music = { queue: [], index: 0, playing: false, pos: 0, at: 0 }; // cola de ids de YouTube; cada navegador reproduce la suya
+    this.music = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; // cola de ids de YouTube (+ nombres paralelos); cada navegador reproduce la suya
     this.version = 0;
     this.conns = {}; // pid -> conexiones SSE abiertas (lo usa server.js)
     this.pollSeen = {}; // pid -> última vez que sondeó (lo usa server.js)
@@ -288,9 +293,11 @@ class Room {
         if (!id) throw new Error('Pega el enlace de un vídeo de YouTube');
         if (m.queue.length >= 20) throw new Error('La lista de música está llena');
         m.queue.push(id);
+        m.names.push(trackName(msg.label));
         if (m.queue.length === 1) goto(0);
         break;
       }
+      case 'rename': m.names[validIndex()] = trackName(msg.label); break;
       case 'play': case 'pause': {
         if (!m.queue.length) break;
         const play = msg.op === 'play';
@@ -319,12 +326,13 @@ class Room {
       case 'remove': {
         const i = validIndex();
         m.queue.splice(i, 1);
+        m.names.splice(i, 1);
         if (!m.queue.length) { m.index = 0; m.playing = false; m.pos = 0; m.at = now; }
         else if (i < m.index) m.index--;
         else if (i === m.index) { if (m.index >= m.queue.length) m.index = m.queue.length - 1; m.pos = 0; m.at = now; }
         break;
       }
-      case 'clear': this.music = { queue: [], index: 0, playing: false, pos: 0, at: now }; break;
+      case 'clear': this.music = { queue: [], names: [], index: 0, playing: false, pos: 0, at: now }; break;
       default: throw new Error('Acción de música desconocida');
     }
   }
@@ -889,7 +897,7 @@ class Room {
       party: { gold: this.party.gold, loot: Object.entries(this.party.loot).map(([id, n]) => ({ id, name: ITEMS[id].name, qty: n, desc: ITEMS[id].desc })) },
       log: this.log.slice(-200),
       chat: this.chat.slice(-120),
-      music: { queue: this.music.queue.slice(), index: this.music.index, playing: this.music.playing, pos: Math.round(Math.min(this.musicPos(), 86400) * 10) / 10 },
+      music: { queue: this.music.queue.slice(), names: this.music.names.slice(), index: this.music.index, playing: this.music.playing, pos: Math.round(Math.min(this.musicPos(), 86400) * 10) / 10 },
     };
     if (def && this.phase !== 'lobby') {
       const n = this.partyPCs().length;

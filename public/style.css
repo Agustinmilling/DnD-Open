@@ -676,7 +676,10 @@ mark { background: #e0b35455; color: inherit; border-radius: 2px; }
 .music-body { display: flex; flex-direction: column; gap: 10px; }
 .music-body p { margin: 0; }
 .music-row { display: flex; align-items: center; gap: 6px; margin: 0; }
-.music-row input[type=text] { flex: 1; min-width: 0; padding: 7px 9px; font-size: 16px; }
+.music-row input[type=text], .music-edit { flex: 1; min-width: 0; padding: 7px 9px; font-size: 16px; }
+#musicAdd { flex-wrap: wrap; }
+#musicAdd #musicUrl { flex: 1 1 100%; }
+.music-list .music-edit { padding: 4px 6px; font-size: 16px; }
 .music-row input[type=range], .music-seek { flex: 1; min-width: 0; accent-color: var(--gold); height: 28px; }
 .music-seek { width: 100%; }
 .music-host { display: flex; flex-direction: column; gap: 8px; }

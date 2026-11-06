@@ -15,7 +15,7 @@ const view = (pid = host) => room.viewFor(pid).music;
 const ID = (n) => 'abcdefghi' + String(n).padStart(2, '0'); // 11 caracteres
 const NOT_YT = 'Pega el enlace de un vídeo de YouTube';
 const NOT_HOST = 'Solo el anfitrión controla la música';
-const EMPTY = { queue: [], index: 0, playing: false, pos: 0 };
+const EMPTY = { queue: [], names: [], index: 0, playing: false, pos: 0 };
 
 // solo el anfitrión
 fails(guest, { op: 'add', text: 'dQw4w9WgXcQ' }, NOT_HOST);
@@ -116,6 +116,60 @@ for (const op of ['play', 'pause', 'next', 'prev', 'seek']) M(host, { op, pos: 1
 assert.deepStrictEqual(view(), EMPTY);
 M(host, { op: 'add', text: ID(5) }); M(host, { op: 'add', text: ID(6) }); M(host, { op: 'clear' });
 assert.deepStrictEqual(view(), EMPTY);
+
+// nombres de pista: add con/sin nombre, rename, normalización y alineación con la cola
+M(host, { op: 'add', text: ID(0), label: 'Batalla 1' });
+M(host, { op: 'add', text: ID(1) });
+M(host, { op: 'add', text: ID(2), label: '  Taberna \n\t  del   puerto ' });
+assert.deepStrictEqual(view().names, ['Batalla 1', '', 'Taberna del puerto']);
+assert.deepStrictEqual(view(guest).names, view().names);
+assert.ok(!('at' in view(guest)));
+const copy = view().names; copy[0] = 'x'; // la vista es una copia
+assert.strictEqual(room.music.names[0], 'Batalla 1');
+M(host, { op: 'rename', index: 1, label: 'Calma' });
+assert.deepStrictEqual(view().names, ['Batalla 1', 'Calma', 'Taberna del puerto']);
+M(host, { op: 'rename', index: 1, label: '   ' }); // vacío o solo espacios borra el nombre
+assert.strictEqual(view().names[1], '');
+M(host, { op: 'rename', index: 0 }); // sin label también borra
+assert.strictEqual(view().names[0], '');
+M(host, { op: 'rename', index: 0, label: 'a\u0000b\u0007c\r\nd e\u0085f' });
+assert.strictEqual(view().names[0], 'a b c d e f');
+M(host, { op: 'rename', index: 0, label: 'x'.repeat(100000) });
+assert.strictEqual(view().names[0], 'x'.repeat(40));
+M(host, { op: 'rename', index: 0, label: '\u0000\u0001\n' });
+assert.strictEqual(view().names[0], '');
+M(host, { op: 'rename', index: 0, label: '<img src=x onerror=alert(1)>' }); // solo texto: el cliente usa textContent
+assert.strictEqual(view().names[0], '<img src=x onerror=alert(1)>');
+M(host, { op: 'rename', index: 0, label: '__proto__' });
+assert.strictEqual(view().names[0], '__proto__');
+assert.deepStrictEqual(Object.keys(Object.prototype), []);
+assert.strictEqual(view().queue.length, view().names.length);
+// rename: índice no válido, tipos erróneos y no anfitrión
+for (const index of [3, 99, 1e9, -1, 1.5, undefined]) fails(host, { op: 'rename', index, label: 'x' }, 'Pista no válida');
+for (const index of ['1', NaN, {}, [], true]) fails(host, { op: 'rename', index, label: 'x' }, 'Datos no válidos');
+fails(guest, { op: 'rename', index: 0, label: 'x' }, NOT_HOST);
+assert.strictEqual(view().names[0], '__proto__');
+assert.strictEqual(view().queue.length, 3);
+// remove mantiene names alineado
+M(host, { op: 'rename', index: 0, label: 'A' }); M(host, { op: 'rename', index: 1, label: 'B' }); M(host, { op: 'rename', index: 2, label: 'C' });
+M(host, { op: 'remove', index: 1 });
+assert.deepStrictEqual(view().queue, [ID(0), ID(2)]);
+assert.deepStrictEqual(view().names, ['A', 'C']);
+fails(host, { op: 'rename', index: 2, label: 'x' }, 'Pista no válida');
+// llenar la lista con nombres y vaciar
+M(host, { op: 'clear' });
+for (let i = 0; i < 20; i++) M(host, { op: 'add', text: ID(i), label: i % 2 ? 'N' + i : undefined });
+assert.strictEqual(view().names.length, 20);
+fails(host, { op: 'add', text: ID(20), label: 'no cabe' }, 'La lista de música está llena');
+assert.strictEqual(view().names.length, 20);
+M(host, { op: 'clear' });
+assert.deepStrictEqual(view(), EMPTY);
+M(host, { op: 'add', text: ID(9) });
+assert.deepStrictEqual(view().names, ['']); // clear no deja nombres antiguos
+M(host, { op: 'clear' });
+fails(host, { op: 'add', text: 'hola', label: 'Nombre' }, NOT_YT);
+assert.deepStrictEqual(view().names, []);
+fails(host, { op: 'rename', index: 0, label: 'x' }, 'Pista no válida');
 
 // op desconocida, claves peligrosas y tipos erróneos
 for (const op of ['borrar', '', undefined]) fails(host, { op }, 'Acción de música desconocida');
