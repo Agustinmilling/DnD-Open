@@ -3,7 +3,7 @@
 Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edición** (SRD 5.2.1) entre varias personas, desde el navegador.
 
 - **Salas multijugador** con código de invitación (1 a 4 jugadores; los demás pueden mirar).
-- **Creación de personaje** con asistente paso a paso y reglas de 2024: las 12 clases del SRD 5.2.1 con su subclase a nivel 3, 9 especies con sus linajes, 12 trasfondos con su dote de origen (+2/+1 o +1/+1/+1 a sus características), serie estándar o compra de 27 puntos, habilidades, pericia, maestrías de armas, trucos, conjuros preparados, equipo, retrato y color. También hay un botón **🎲 Al azar** y personajes pre-hechos.
+- **Creación de personaje** con asistente paso a paso y reglas de 2024: las 12 clases del SRD 5.2.1 con su subclase a nivel 3, 9 especies con sus linajes, 12 trasfondos con su dote de origen (+2/+1 o +1/+1/+1 a sus características), serie estándar o compra de 27 puntos, habilidades, pericia, maestrías de armas, trucos, conjuros preparados, equipo, retrato y color. Propone nombres al azar según la especie y el género (botón **🎲 Al azar** en el paso de detalles). También hay un botón **🎲 Al azar** y personajes pre-hechos.
 - **Tres aventuras originales** que elige el anfitrión en el lobby:
   - *La Sombra bajo Robledal* (1-2 h): criptas enanas, goblins y un necrófago. Para empezar.
   - *Los Fuegos de Punta Gaviota* (2-3 h, 4 finales): un faro apagado, contrabandistas y un culto marino. Tres pistas en el orden que queráis (cada desvío cuesta tiempo), una capitana que puede ser aliada, presa o enemiga, y si os derrotan despertáis prisioneros en su barco.
@@ -13,7 +13,7 @@ Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edici
 - **Chat** de la mesa en tiempo real.
 - **Combate por turnos** con iniciativa, sorpresa, acción / acción adicional / reacción, críticos, salvaciones contra muerte, concentración, condiciones y una IA sencilla para los enemigos.
 - **Progresión**: experiencia por enemigos e hitos, subida de nivel automática (niveles 1 → 3) con nuevos PG, rasgos, conjuros y espacios.
-- **Interfaz ilustrada y animada**: cada escena tiene su ilustración y partículas (lluvia, luciérnagas, niebla, ascuas…), dados d20 que ruedan en pantalla, números de daño y curación, barras de vida animadas, sellos de «¡Combate!», «¡Victoria!» y «Tu turno», y una pantalla de subida de nivel. El botón ✨ Animaciones las desactiva (también respeta la preferencia de «reducir movimiento» del sistema).
+- **Interfaz ilustrada y animada**: cada escena tiene su ilustración y partículas (lluvia, luciérnagas, niebla, ascuas…), dados d20 que ruedan en pantalla, números de daño y curación, barras de vida animadas, sellos de «¡Combate!», «¡Victoria!» y «Tu turno», y una pantalla de subida de nivel. Las ventanas, menús, paneles, pasos del asistente y mensajes del chat entran y salen con transiciones suaves. El botón **Aa** cambia el tamaño de la letra (normal, grande, muy grande) y el botón ✨ Animaciones las desactiva (también respeta la preferencia de «reducir movimiento» del sistema).
 - **Glosario** flotante con buscador (también en `/glosario`): reglas básicas, habilidades, rasgos y pasivas, objetos, conjuros, condiciones, criaturas, especies, clases, trasfondos y dotes. Se puede mover, ampliar (doble clic en la cabecera) y recuerda su posición.
 
 No necesita base de datos ni dependencias: solo Node.js.

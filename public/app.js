@@ -49,6 +49,47 @@
     toast(motionOn ? 'Animaciones activadas' : 'Animaciones desactivadas', true);
   };
 
+  // ------------------------------------------------------------------ tamaño de letra
+  const FS_KEY = 'mesa:fs';
+  const FS_NAMES = ['normal', 'grande', 'muy grande'];
+  let fontStep = (() => { try { return Math.min(2, Math.max(0, +localStorage.getItem(FS_KEY) || 0)); } catch { return 0; } })();
+  function applyFont() {
+    document.documentElement.classList.remove('fs-1', 'fs-2');
+    if (fontStep) document.documentElement.classList.add('fs-' + fontStep);
+    $('#fontBtn').title = `Tamaño de letra: ${FS_NAMES[fontStep]} (pulsa para cambiar)`;
+    $('#fontBtn').setAttribute('aria-label', $('#fontBtn').title);
+  }
+  $('#fontBtn').onclick = () => {
+    fontStep = (fontStep + 1) % 3;
+    try { localStorage.setItem(FS_KEY, String(fontStep)); } catch {}
+    applyFont();
+    toast(`Letra ${FS_NAMES[fontStep]}`, true);
+  };
+  applyFont();
+
+  // ------------------------------------------------------------------ ayudas de animación
+  const animOn = () => motionOn && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** Reinicia una animación CSS de clase (p. ej. 'swap') en un elemento */
+  function replay(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    if (!animOn()) return;
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+  /** Cierra un <dialog> con animación de salida */
+  function closeDialog(d) {
+    if (!d.open || d.classList.contains('closing')) return;
+    if (!animOn()) { d.close(); return; }
+    d.classList.add('closing');
+    setTimeout(() => { d.classList.remove('closing'); d.close(); }, 210);
+  }
+  for (const d of $$('dialog')) {
+    d.addEventListener('cancel', (e) => { e.preventDefault(); closeDialog(d); }); // tecla Escape
+    for (const f of $$('form[method="dialog"]', d)) f.addEventListener('submit', (e) => { e.preventDefault(); closeDialog(d); });
+    d.addEventListener('click', (e) => { if (e.target === d) closeDialog(d); }); // clic fuera de la ventana
+  }
+
   /** Partículas de ambiente en un canvas (solo si es visible). kind=null las detiene. */
   function ambient(canvas, kind, force = false) {
     if (!canvas) return;
@@ -75,8 +116,8 @@
     const t = $('#toast');
     t.textContent = text;
     t.className = 'toast' + (info ? ' info' : '');
-    clearTimeout(t._h);
-    t._h = setTimeout(() => t.classList.add('hidden'), 3500);
+    clearTimeout(t._h); clearTimeout(t._h2);
+    t._h = setTimeout(() => { t.classList.add('leaving'); t._h2 = setTimeout(() => t.classList.add('hidden'), 260); }, 3500);
   }
   Music.init({ send, toast }); // música compartida: ver music.js
   const credKey = (code) => `mesa:${code}`;
@@ -198,11 +239,21 @@
   }));
 
   const pinned = { log: true, chat: true };
-  $('#log').addEventListener('scroll', (e) => { const b = e.target; pinned.log = b.scrollHeight - b.scrollTop - b.clientHeight < 60; });
-  $('#chat').addEventListener('scroll', (e) => { const b = e.target; pinned.chat = b.scrollHeight - b.scrollTop - b.clientHeight < 60; });
+  const autoScroll = { log: 0, chat: 0 }; // hasta cuándo el desplazamiento lo hace el programa (no el jugador)
+  for (const k of ['log', 'chat']) {
+    $('#' + k).addEventListener('scroll', (e) => {
+      if (Date.now() < autoScroll[k]) return;
+      const b = e.target; pinned[k] = b.scrollHeight - b.scrollTop - b.clientHeight < 60;
+    });
+  }
   function stick() {
-    if (pinned.log) $('#log').scrollTop = $('#log').scrollHeight;
-    if (pinned.chat) $('#chat').scrollTop = $('#chat').scrollHeight;
+    for (const k of ['log', 'chat']) {
+      const b = $('#' + k);
+      if (!pinned[k] || b.scrollHeight - b.scrollTop - b.clientHeight < 2) continue;
+      const far = b.scrollHeight - b.scrollTop - b.clientHeight > 2500; // al entrar en una sala con mucho historial: salto directo
+      autoScroll[k] = Date.now() + 700;
+      b.scrollTo({ top: b.scrollHeight, behavior: animOn() && !far && b.offsetParent ? 'smooth' : 'auto' });
+    }
   }
   function renderChat(v) {
     const box = $('#chat');
@@ -257,7 +308,7 @@
       ? `<button class="btn small" data-release>Dejar personaje</button>`
       : c.takenBy ? `<button class="btn small" disabled>Elegido por ${esc(c.takenBy)}</button>`
       : `<button class="btn small primary" data-pick="${c.id}">Jugar con ${esc(c.name.split(' ')[0])}</button>`;
-    return `<article class="char-card ${mine ? 'mine' : ''} ${c.takenBy ? 'taken' : ''} ${c.custom ? 'custom' : ''}" style="--c:${c.color}">
+    return `<article data-card="${esc(c.id)}" class="char-card ${mine ? 'mine' : ''} ${c.takenBy ? 'taken' : ''} ${c.custom ? 'custom' : ''}" style="--c:${c.color}">
       ${c.custom ? `<span class="custom-badge">${c.mine ? '✦ Tu creación' : '✦ Creado en la sala'}</span>` : ''}
       <div class="char-head"><span class="medallion">${esc(c.portrait)}</span>
         <div><h4>${esc(c.name)}</h4><div class="sub">${esc(c.race)} · ${esc(c.className)}</div></div></div>
@@ -294,7 +345,16 @@
     }
     $('#createCharBtn').onclick = () => openCreator();
     $('#randomCharBtn').onclick = () => send({ type: 'create', spec: 'random' });
-    if (setHTML($('#catalog'), v.catalog.map((c) => charCard(c, v)).join(''))) bindCharButtons($('#catalog'));
+    if (setHTML($('#catalog'), v.catalog.map((c) => charCard(c, v)).join(''))) {
+      bindCharButtons($('#catalog'));
+      S.seenCards = S.seenCards || new Set();
+      const first = !S.seenCards.size;
+      $$('#catalog [data-card]').forEach((el, i) => {
+        if (S.seenCards.has(el.dataset.card)) return;
+        S.seenCards.add(el.dataset.card);
+        if (animOn()) { el.classList.add('enter'); el.style.animationDelay = first ? `${Math.min(i, 8) * 50}ms` : '0ms'; }
+      });
+    }
     setHTML($('#playersList'), v.players.map((p) => {
       const c = p.charId && v.catalog.find((x) => x.id === p.charId);
       return `<span class="pill ${p.connected ? '' : 'off'}"${c ? ` style="border-color:${c.color}"` : ''}><span class="dot ${p.connected ? '' : 'off'}"></span>${esc(p.name)}${p.isHost ? ' 👑' : ''}${c ? ` · ${c.portrait} ${esc(c.name.split(' ')[0])}` : ''}</span>`;
@@ -657,7 +717,9 @@
       if (!html && !sc.end) html = `<div class="waiting"><span class="hourglass">⏳</span>La historia continúa…</div>`;
     }
     const actionList = v.combat ? v.combat.actions : v.exploreActions;
+    const sig = v.phase === 'ended' ? 'end' : v.combat ? (v.combat.actions.length ? `turn:${v.combat.round}:${v.combat.currentId}` : 'wait') : `scene:${v.scene ? v.scene.id : ''}:${myPc ? 1 : 0}`;
     if (!setHTML(panel, html)) return;
+    if (sig !== S.panelSig) { S.panelSig = sig; replay(panel, 'swap'); }
     bindCharButtons(panel);
     $$('[data-check]', panel).forEach((b) => (b.onclick = () => send({ type: 'check', checkId: b.dataset.check })));
     $$('[data-exit]', panel).forEach((b) => (b.onclick = () => send({ type: 'vote', exit: +b.dataset.exit })));
@@ -777,7 +839,11 @@
   function toggleGlossary(open) {
     const win = $('#glossaryWin');
     open = open ?? win.classList.contains('hidden');
-    win.classList.toggle('hidden', !open);
+    if (!open && !win.classList.contains('hidden') && animOn()) {
+      win.classList.add('closing');
+      clearTimeout(win._close);
+      win._close = setTimeout(() => { win.classList.remove('closing'); win.classList.add('hidden'); }, 190);
+    } else { clearTimeout(win._close); win.classList.remove('closing'); win.classList.toggle('hidden', !open); }
     $('#glossaryBtn').setAttribute('aria-expanded', String(open));
     if (!open) return;
     gwinRestore();
@@ -934,6 +1000,9 @@
     const c = wCls(), sp = wSp(), bg = wBg();
     $('#wzSteps').innerHTML = steps.map(([k, t], i) => `<button type="button" class="${i === WZ.step ? 'active' : ''} ${i < WZ.step ? 'done' : ''}" data-wstep="${i}" ${i > WZ.step && steps.slice(0, i).some(([kk]) => wProblem(kk)) ? 'disabled' : ''}><b>${i + 1}</b><span>${t}</span></button>`).join('');
     let h = `<h3>${title}</h3>`;
+    const moved = WZ.shownStep !== WZ.step;
+    const dir = WZ.shownStep == null || WZ.step > WZ.shownStep ? 'fwd' : 'back';
+    WZ.shownStep = WZ.step;
     if (key === 'class') {
       h += `<div class="wgrid">${d.classes.map((x) => `<button type="button" class="wcard ${s.cls === x.id ? 'on' : ''}" data-cls="${x.id}"><span class="wic">${x.icon}</span><b>${esc(fem() ? x.fem : x.name)}</b><span class="wtags"><i>d${x.hitDie} PG</i><i>${abilShort(x.primary)} principal</i><i>Salv.: ${x.saves.map(abilShort).join(', ')}</i></span><small>${esc(x.desc)}</small>${statBars(x.stats)}</button>`).join('')}</div>`;
       if (c) {
@@ -989,8 +1058,11 @@
         if (c.masteries) h += `<p class="muted small">Dominas la maestría de hasta ${c.masteries} armas de tu equipo: su efecto se aplica solo al usarlas.</p>`;
       }
     } else if (key === 'details') {
-      h += `<div class="wform"><label>Nombre <input id="wzName" maxlength="28" value="${esc(s.name)}" placeholder="p. ej. Alma Brasaviva"></label>
-        <div class="wseg">${chip(s.gender === 'f', 'data-gender="f"', 'Femenino')}${chip(s.gender === 'm', 'data-gender="m"', 'Masculino')}</div>
+      const nk = `${s.species}:${s.gender}`;
+      if (WZ.namesKey !== nk) { WZ.namesKey = nk; WZ.names = Names.suggestions(s.species, s.gender, 5); if (!s._named) s.name = WZ.names[0]; }
+      h += `<div class="wform"><div class="wseg">${chip(s.gender === 'f', 'data-gender="f"', 'Femenino')}${chip(s.gender === 'm', 'data-gender="m"', 'Masculino')}</div>
+        <label>Nombre <span class="wname-row"><input id="wzName" maxlength="28" value="${esc(s.name)}" placeholder="p. ej. Alma Brasaviva"><button type="button" class="btn small" data-rollname title="Otras ideas de nombres">🎲 Al azar</button></span></label>
+        <div class="wchips wnames" aria-label="Ideas de nombres">${WZ.names.map((n) => chip(s.name === n, `data-name="${esc(n)}"`, esc(n))).join('')}</div>
         <h4>Retrato</h4><div class="wchips portraits">${PORTRAITS.map((p) => chip(s.portrait === p, `data-por="${p}"`, p)).join('')}</div>
         <h4>Color</h4><div class="wchips">${COLORS.map((col) => `<button type="button" class="wcolor ${s.color === col ? 'on' : ''}" data-col="${col}" style="--c:${col}" aria-label="Color ${col}"></button>`).join('')}</div>
         <label>Historia (opcional) <textarea id="wzBio" maxlength="400" rows="3" placeholder="¿De dónde vienes? ¿Qué buscas?">${esc(s.bio)}</textarea></label></div>`;
@@ -1015,6 +1087,8 @@
     const prob = wProblem(key);
     h += `<p class="wprob">${prob ? '⚠️ ' + esc(prob) : ''}</p>`;
     setHTML($('#wzBody'), h);
+    if (moved) { $('#wzBody').classList.remove('fwd', 'back'); replay($('#wzBody'), dir); }
+    else $('#wzBody').classList.remove('fwd', 'back'); // al elegir algo dentro del paso, no repetir la entrada
     $('#wzBack').disabled = WZ.step === 0;
     $('#wzNext').classList.toggle('hidden', key === 'summary');
     $('#wzCreate').classList.toggle('hidden', key !== 'summary');
@@ -1025,7 +1099,14 @@
   function wSet(fn) { fn(WZ.spec); wRender(); }
   function wBind() {
     const b = $('#wzBody'), s = WZ.spec;
-    const on = (sel, fn) => $$(sel, b).forEach((el) => (el.onclick = () => fn(el)));
+    // tras redibujar, el botón pulsado da un pequeño «toque» para que se note la elección
+    const tapSel = (el) => { const a = [...el.attributes].find((x) => x.name.startsWith('data-')); return a ? `[${a.name}="${CSS.escape(a.value)}"]` : null; };
+    const on = (sel, fn) => $$(sel, b).forEach((el) => (el.onclick = () => {
+      const ts = tapSel(el);
+      fn(el);
+      const again = ts && $(ts, b);
+      if (again && animOn()) again.classList.add('tap');
+    }));
     $$('[data-wstep]', $('#wzSteps')).forEach((el) => (el.onclick = () => { WZ.step = +el.dataset.wstep; wRender(); }));
     on('[data-cls]', (el) => wSet(() => {
       if (s.cls === el.dataset.cls) return;
@@ -1060,10 +1141,12 @@
     $$('[data-ch][title]', b).forEach((el) => (el.onmouseenter = el.onfocus = () => { const dd = $('#wzSpellDesc'); if (dd) dd.innerHTML = `<b>${esc(el.textContent)}</b> · ${esc(el.title)}`; }));
     on('[data-kit]', (el) => wSet(() => { s.kit = el.dataset.kit; }));
     on('[data-gender]', (el) => wSet(() => { s.gender = el.dataset.gender; }));
+    on('[data-name]', (el) => wSet(() => { s.name = el.dataset.name; s._named = false; }));
+    on('[data-rollname]', () => wSet(() => { WZ.names = Names.suggestions(s.species, s.gender, 5); s.name = WZ.names[0]; s._named = false; }));
     on('[data-por]', (el) => wSet(() => { s.portrait = el.dataset.por; s._por = true; }));
     on('[data-col]', (el) => wSet(() => { s.color = el.dataset.col; }));
     const name = $('#wzName', b);
-    if (name) name.oninput = () => { s.name = name.value; const p = wProblem('details'); $('#wzNext').disabled = !!p; $('.wprob', b).textContent = p ? '⚠️ ' + p : ''; };
+    if (name) name.oninput = () => { s.name = name.value; s._named = true; $$('[data-name]', b).forEach((x) => x.classList.toggle('on', x.dataset.name === s.name)); const p = wProblem('details'); $('#wzNext').disabled = !!p; $('.wprob', b).textContent = p ? '⚠️ ' + p : ''; };
     const bio = $('#wzBio', b);
     if (bio) bio.oninput = () => { s.bio = bio.value; };
   }
@@ -1071,7 +1154,7 @@
     try { await creationData(); } catch { toast('No se pudieron cargar las opciones de creación'); return; }
     if (typeof Choices === 'undefined') { toast('No se pudieron cargar las reglas de creación'); return; }
     WZ.spec = { name: '', gender: 'f', cls: null, background: null, species: null, kit: null, method: 'array', base: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, bgPlus: {}, choices: {}, portrait: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], bio: '' };
-    WZ.step = 0; WZ.busy = false;
+    WZ.step = 0; WZ.busy = false; WZ.namesKey = null; WZ.shownStep = null;
     $('#wzBody')._html = null;
     wRender();
     $('#createDialog').showModal();
@@ -1082,11 +1165,11 @@
   $('#wzCreate').onclick = async () => {
     WZ.busy = true; $('#wzCreate').disabled = true;
     const s = WZ.spec;
-    const { _por, ...rest } = s;
+    const { _por, _named, ...rest } = s;
     const spec = { ...rest, name: s.name.trim() };
     const ok = await send({ type: 'create', spec });
     WZ.busy = false; $('#wzCreate').disabled = false;
-    if (ok) { $('#createDialog').close(); toast(`¡${s.name.trim()} se une a la mesa!`, true); }
+    if (ok) { closeDialog($('#createDialog')); toast(`¡${s.name.trim()} se une a la mesa!`, true); }
   };
 
   // ------------------------------------------------------------------ pestañas móviles
