@@ -78,6 +78,7 @@
     clearTimeout(t._h);
     t._h = setTimeout(() => t.classList.add('hidden'), 3500);
   }
+  Music.init({ send, toast }); // música compartida: ver music.js
   const credKey = (code) => `mesa:${code}`;
   function saveCreds() { try { localStorage.setItem(credKey(S.code), JSON.stringify({ pid: S.pid, token: S.token })); localStorage.setItem('mesa:name', $('#nameInput').value.trim()); } catch {} }
   function loadCreds(code) { try { return JSON.parse(localStorage.getItem(credKey(code)) || 'null'); } catch { return null; } }
@@ -147,6 +148,7 @@
   function showHome(err = '') {
     showScreen('home');
     $('#roomInfo').classList.add('hidden');
+    Music.update(null);
     $('#homeError').textContent = err;
   }
   $('#nameInput').value = (() => { try { return localStorage.getItem('mesa:name') || ''; } catch { return ''; } })();
@@ -227,6 +229,7 @@
     if (!v) return;
     $('#roomInfo').classList.remove('hidden');
     $('#roomCode').textContent = v.code;
+    Music.update(v);
     const lobby = v.phase === 'lobby';
     const screen = lobby ? 'lobby' : 'game';
     if ($('#' + screen).classList.contains('hidden')) showScreen(screen);

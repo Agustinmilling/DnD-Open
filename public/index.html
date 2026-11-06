@@ -18,6 +18,7 @@
       <button id="copyLink" class="btn small ghost" title="Copiar enlace de invitación">Copiar invitación</button>
     </div>
     <nav>
+      <button id="musicBtn" class="btn music-btn hidden" aria-label="Música de la mesa" title="Música de la mesa" aria-expanded="false" aria-controls="musicPanel">🎵</button>
       <button id="motionToggle" class="btn small ghost" title="Activar o desactivar animaciones">✨ Animaciones</button>
       <button id="glossaryBtn" class="btn small ghost" aria-expanded="false" aria-controls="glossaryWin">📖 Glosario</button>
     </nav>
@@ -160,6 +161,33 @@
     </div>
   </section>
 
+  <!-- Música compartida (reproductor de YouTube de cada navegador; ver music.js) -->
+  <section id="musicPanel" class="music-panel" aria-label="Música de la mesa">
+    <div class="music-frame"><div id="musicPlayer"></div></div>
+    <div id="musicBody" class="music-body" inert>
+      <p id="musicStatus" class="muted small" aria-live="polite"></p>
+      <button id="musicUnlock" class="btn small primary hidden" type="button">Activar música</button>
+      <div class="music-row">
+        <button id="musicMute" class="btn small ghost" type="button" aria-label="Silenciar música (solo para ti)" title="Silenciar música (solo para ti)" aria-pressed="false">🔊</button>
+        <input id="musicVol" type="range" min="0" max="100" step="5" aria-label="Volumen de la música (solo para ti)" title="Volumen (solo para ti)">
+      </div>
+      <div id="musicHost" class="music-host hidden">
+        <form id="musicAdd" class="music-row">
+          <input id="musicUrl" type="text" placeholder="Enlace de YouTube" aria-label="Enlace de YouTube para añadir" autocomplete="off">
+          <button class="btn small" title="Añadir a la lista" aria-label="Añadir a la lista">Añadir</button>
+        </form>
+        <div class="music-row music-transport">
+          <button id="musicPrev" class="btn small" type="button" title="Pista anterior" aria-label="Pista anterior">⏮</button>
+          <button id="musicPlay" class="btn small primary" type="button" title="Reproducir" aria-label="Reproducir">▶</button>
+          <button id="musicNext" class="btn small" type="button" title="Pista siguiente" aria-label="Pista siguiente">⏭</button>
+          <button id="musicClear" class="btn small ghost danger" type="button" title="Vaciar la lista" aria-label="Vaciar la lista">Vaciar</button>
+        </div>
+        <input id="musicSeek" class="music-seek" type="range" min="0" max="0" step="1" value="0" aria-label="Posición en la pista" title="Adelantar o retroceder">
+      </div>
+      <ol id="musicList" class="music-list"></ol>
+    </div>
+  </section>
+
   <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <footer class="attribution">
@@ -170,6 +198,7 @@
   </footer>
   <script src="/fx.js"></script>
   <script src="/choices.js"></script>
+  <script src="/music.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
