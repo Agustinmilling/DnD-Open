@@ -11,6 +11,7 @@ const BACKGROUNDS = require('./data/backgrounds');
 const BEASTS = require('./data/beasts');
 const CREATION = require('./creation');
 const Choices = require('../public/choices');
+const Names = require('../public/names');
 
 const { POINT_COST, STD_ARRAY } = CREATION;
 const TEMPLATES = {}; // id -> plantilla (pre-hechos al cargar; los creados en las salas se añaden después)
@@ -471,10 +472,6 @@ function buildTemplate(spec, id) {
 }
 
 /** Genera una elección válida al azar para el asistente (botón "Aleatorio" y pruebas). */
-const RANDOM_NAMES = {
-  m: ['Aldo', 'Bruno', 'Ciro', 'Dámaso', 'Eloy', 'Fermín', 'Gael', 'Hugo', 'Iker', 'Jacobo', 'Lucio', 'Mauro', 'Nuño', 'Olmo', 'Rodrigo', 'Tadeo'],
-  f: ['Alma', 'Berta', 'Celia', 'Dalia', 'Elena', 'Fiona', 'Greta', 'Irene', 'Jimena', 'Lara', 'Mara', 'Nora', 'Olga', 'Rocío', 'Sara', 'Vera'],
-};
 /** Un intento al azar; puede quedar sin solución (p. ej. humano + Iniciado en la magia de clérigo con Taumaturgo: no quedan trucos libres). */
 function randomSpecTry(D, rnd, fixed) {
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
@@ -490,7 +487,7 @@ function randomSpecTry(D, rnd, fixed) {
   // +2 a la mejor característica del trasfondo para la clase y +1 a la siguiente
   const order = Object.entries(base).sort((a, b) => b[1] - a[1]).map(([k]) => k).filter((k) => bg.abilities.includes(k));
   const bgPlus = order.length >= 2 ? { [order[0]]: 2, [order[1]]: 1 } : Object.fromEntries(bg.abilities.map((k) => [k, 1]));
-  const spec = { name: pick(RANDOM_NAMES[gender]), gender, cls: clsKey, background: bgKey, species: spKey, method: 'array', base, bgPlus, choices: { ...(fixed.choices || {}) } };
+  const spec = { name: fixed.name || Names.generate(spKey, gender, rnd), gender, cls: clsKey, background: bgKey, species: spKey, method: 'array', base, bgPlus, choices: { ...(fixed.choices || {}) } };
   // elecciones: se rellenan una a una al azar (cada elección puede abrir otras)
   for (let guard = 0; guard < 30; guard++) {
     Choices.prune(D, spec);
