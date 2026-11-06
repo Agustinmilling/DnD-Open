@@ -475,8 +475,8 @@ const RANDOM_NAMES = {
   m: ['Aldo', 'Bruno', 'Ciro', 'Dámaso', 'Eloy', 'Fermín', 'Gael', 'Hugo', 'Iker', 'Jacobo', 'Lucio', 'Mauro', 'Nuño', 'Olmo', 'Rodrigo', 'Tadeo'],
   f: ['Alma', 'Berta', 'Celia', 'Dalia', 'Elena', 'Fiona', 'Greta', 'Irene', 'Jimena', 'Lara', 'Mara', 'Nora', 'Olga', 'Rocío', 'Sara', 'Vera'],
 };
-function randomSpec(rnd = Math.random, fixed = {}) {
-  const D = CREATION.build();
+/** Un intento al azar; puede quedar sin solución (p. ej. humano + Iniciado en la magia de clérigo con Taumaturgo: no quedan trucos libres). */
+function randomSpecTry(D, rnd, fixed) {
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const sample = (arr, n) => { const pool = arr.slice(); const out = []; while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]); return out; };
   const clsKey = fixed.cls || pick(Object.keys(CLASSES));
@@ -506,6 +506,14 @@ function randomSpec(rnd = Math.random, fixed = {}) {
   spec.portrait = fixed.portrait || SPECIES[spKey].icon;
   spec.color = fixed.color || pick(['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#b7950b', '#7f8c8d']);
   return spec;
+}
+function randomSpec(rnd = Math.random, fixed = {}) {
+  const D = CREATION.build();
+  for (let i = 0; i < 20; i++) {
+    const spec = randomSpecTry(D, rnd, fixed);
+    if (!Choices.choicesProblem(D, spec)) return spec;
+  }
+  throw new Error('No se pudo generar un personaje al azar válido con esas condiciones');
 }
 
 // Personajes pre-hechos: se construyen con las mismas reglas que el asistente

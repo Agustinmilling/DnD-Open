@@ -323,7 +323,8 @@ class Room {
   createCharacter(player, spec) {
     if (this.combat) throw new Error('No puedes crear un personaje durante un combate');
     if (this.customIds.length >= 12) throw new Error('Esta sala ya tiene demasiados personajes creados');
-    const id = `c_${this.code}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    let id;
+    do id = `c_${this.code}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`; while (C.TEMPLATES[id]); // sin repetir nunca un id existente
     const t = C.buildTemplate(spec, id);
     t.room = this.code;
     t.creator = player.id;
