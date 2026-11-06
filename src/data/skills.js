@@ -1,8 +1,8 @@
-// Las 18 habilidades de 5ª edición (SRD 5.1)
+// Las 18 habilidades de 5ª edición (SRD 5.2.1, nombres oficiales en español)
 module.exports = {
   acrobatics: { name: 'Acrobacias', ability: 'dex', desc: 'Mantener el equilibrio en situaciones difíciles, hacer piruetas, volteretas y saltos acrobáticos.' },
   animal: { name: 'Trato con animales', ability: 'wis', desc: 'Calmar a un animal doméstico, evitar que una montura se asuste o intuir las intenciones de un animal.' },
-  arcana: { name: 'Arcanos', ability: 'int', desc: 'Recordar saberes sobre conjuros, objetos mágicos, símbolos arcanos, tradiciones mágicas y planos de existencia.' },
+  arcana: { name: 'Conocimiento arcano', ability: 'int', desc: 'Recordar saberes sobre conjuros, objetos mágicos, símbolos arcanos, tradiciones mágicas y planos de existencia.' },
   athletics: { name: 'Atletismo', ability: 'str', desc: 'Trepar, saltar, nadar y otras proezas físicas que dependen de la fuerza bruta.' },
   deception: { name: 'Engaño', ability: 'cha', desc: 'Ocultar la verdad de forma convincente, ya sea con palabras o con actos.' },
   history: { name: 'Historia', ability: 'int', desc: 'Recordar saberes sobre sucesos históricos, personajes legendarios, reinos antiguos y civilizaciones perdidas.' },

@@ -22,13 +22,13 @@
     <div class="glist" id="list"></div>
   </main>
   <footer class="attribution">
-    Contiene material del <i>System Reference Document 5.1</i> de Wizards of the Coast LLC (<a href="https://dnd.wizards.com/resources/systems-reference-document" target="_blank" rel="noopener">dnd.wizards.com</a>), bajo licencia <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noopener">CC BY 4.0</a>. Textos traducidos al español y resumidos/adaptados. Proyecto no oficial.
+    Contiene material del <i>System Reference Document 5.2.1</i> de Wizards of the Coast LLC (<a href="https://www.dndbeyond.com/srd" target="_blank" rel="noopener">dndbeyond.com/srd</a>), bajo licencia <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noopener">CC BY 4.0</a>. Textos traducidos al español y resumidos/adaptados. Proyecto no oficial.
   </footer>
   <script>
     const SECTIONS = [
       ['rules', 'Reglas básicas'], ['skills', 'Habilidades'], ['features', 'Rasgos y pasivas'], ['items', 'Objetos'],
       ['spells', 'Conjuros'], ['conditions', 'Condiciones'], ['monsters', 'Criaturas'],
-      ['races', 'Razas'], ['classes', 'Clases'], ['backgrounds', 'Trasfondos'],
+      ['species', 'Especies'], ['classes', 'Clases'], ['backgrounds', 'Trasfondos'], ['feats', 'Dotes'],
     ];
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

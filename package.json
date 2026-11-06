@@ -1,7 +1,7 @@
 {
   "name": "mesa-de-dados",
-  "version": "0.3.0",
-  "description": "Prototipo de plataforma web multijugador para jugar con las reglas de 5ª edición (SRD 5.1).",
+  "version": "0.4.0",
+  "description": "Prototipo de plataforma web multijugador para jugar con las reglas de 5ª edición (reglas de 2024, SRD 5.2.1).",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -10,7 +10,7 @@
     "enlace": "bash scripts/enlace.sh",
     "check": "node test/validate-adventures.js",
     "fuzz": "node test/fuzz.js",
-    "test": "node test/validate-adventures.js && node test/playthrough.js"
+    "test": "node test/validate-adventures.js && node test/monsters.js && node test/playthrough.js"
   },
   "engines": { "node": ">=18" },
   "license": "MIT"

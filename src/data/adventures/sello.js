@@ -1,5 +1,5 @@
 // Aventura original: "El Sello de Ámbar" (para 1-4 personajes de nivel 1 a 3).
-// Historia y personajes originales. Monstruos y reglas: SRD 5.1.
+// Historia y personajes originales. Monstruos y reglas: SRD 5.2.1.
 //
 // Ramificaciones principales:
 //   - Intriga urbana con tres bandos: Lady Isolda (la heredera), el canciller Bastián Dore y el gremio de ladrones de la Linterna.
@@ -61,7 +61,7 @@ module.exports = {
         { id: 'spot', label: 'Buscar al ladrón entre el humo (Percepción CD 12)', skill: 'perception', dc: 12,
           success: { text: 'Ves una figura con capa gris trepar por un canalón y desaparecer en los tejados del barrio de los Tintoreros. ¡Aún podéis alcanzarla!', flags: ['sawThief'], xp: 25 },
           fail: { text: 'El humo os pica en los ojos. Cuando se disipa, solo veis caras asustadas.' } },
-        { id: 'smoke', label: 'Analizar los restos de las botellas (Arcanos o Investigación CD 12)', skill: 'arcana', altSkill: 'investigation', dc: 12,
+        { id: 'smoke', label: 'Analizar los restos de las botellas (Conocimiento arcano o Investigación CD 12)', skill: 'arcana', altSkill: 'investigation', dc: 12,
           success: { text: 'Polvo de lirio violeta y sal de nitro: humo alquímico de calidad. En Velacruz solo lo prepara maese Orrin, el alquimista… de la cancillería.', flags: ['clueSmoke'], inc: { evidence: 1 }, xp: 25 },
           fail: { text: 'Cristales rotos y un olor dulzón. Nada más.' } },
         { id: 'case', label: 'Examinar el estuche del sello (Investigación CD 13)', skill: 'investigation', dc: 13,
@@ -311,7 +311,7 @@ module.exports = {
         defeat: { to: 'mazmorra', text: 'El guantelete de hierro se cierra sobre vosotros. Cuando despertáis, el canciller os mira desde el otro lado de unos barrotes.', flags: ['captured'] },
       },
       checks: [
-        { id: 'command', label: 'Encontrar la palabra de mando de la armadura (Arcanos CD 14)', skill: 'arcana', dc: 14, preCombat: true,
+        { id: 'command', label: 'Encontrar la palabra de mando de la armadura (Conocimiento arcano CD 14)', skill: 'arcana', dc: 14, preCombat: true,
           success: { text: 'Hay una runa grabada en el peto. La lees en voz alta y la armadura se queda quieta.', xp: 75, peaceful: true },
           fail: { text: 'Pronuncias algo parecido y la armadura levanta los puños.', startCombat: true } },
         { id: 'ledger', label: 'Buscar el libro de cuentas secreto', auto: true, hideIf: ['ledger'],
