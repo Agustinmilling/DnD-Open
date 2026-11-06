@@ -1,6 +1,6 @@
 // Acciones de los personajes (reglas de 2024, SRD 5.2.1): menú de acciones de combate, rasgos de clase,
 // lanzamiento de conjuros y acciones de exploración. Son métodos de Room (engine.js), como combat.js.
-const { roll, d20, critExpr } = require('./dice');
+const { roll, critExpr } = require('./dice');
 const { mod, fmtMod, profBonus, ABILITIES } = require('./rules');
 const C = require('./character');
 const SPELLS = require('./data/spells');
@@ -10,9 +10,9 @@ const FEATURES = require('./data/features');
 const CONDITIONS = require('./data/conditions');
 const BEASTS = require('./data/beasts');
 const CLASSES = require('./data/classes');
-const { addDice, empower } = require('./combat').helpers;
+const { addDice, empower, byHurt, CANTRIP_SCALE } = require('./combat').helpers;
 
-const tpl = (pc) => C.TEMPLATES[pc.templateId];
+const tpl = C.tplOf;
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const fdesc = (id) => (FEATURES[id] ? FEATURES[id].desc : '');
 
@@ -28,6 +28,8 @@ const UNDEAD_FIEND = ['muerto viviente', 'infernal'];
 /** Tipo de objetivo que entiende el cliente */
 const castTarget = (s) => (s.target === 'enemies' ? 'enemies3' : s.target || 'none');
 const maxTargetsOf = (s, up) => (s.maxTargets || (s.target === 'enemies' ? 3 : 1)) + (s.upTargets || 0) * up;
+/** Cómo se paga un conjuro, para las etiquetas del menú (opt viene de castOption) */
+const spellTag = (s, opt) => (s.level === 0 ? 'truco' : opt.free ? 'sin gastar espacio' : `espacio nv ${opt.slot}`);
 
 function aiOf(s) {
   if (s.kind === 'heal') return 'heal';
@@ -69,7 +71,7 @@ module.exports = {
     let e = s.damage;
     if (!e) return null;
     if (s.cantripDamage) {
-      const n = pc.level >= 17 ? 4 : pc.level >= 11 ? 3 : pc.level >= 5 ? 2 : 1;
+      const n = CANTRIP_SCALE(pc.level);
       if (n > 1) e = e.replace(/^(\d*)d/, (_, k) => `${(k === '' ? 1 : +k) * n}d`);
     }
     if (up && s.upcast) e = addDice(e, up, s.upcast);
@@ -161,7 +163,7 @@ module.exports = {
         if (!opt) continue;
         const up = s.level ? opt.slot - s.level : 0;
         const base = { cost: s.time, group: 'Conjuros', ai: aiOf(s), target: castTarget(s), maxTargets: maxTargetsOf(s, up) };
-        const tag = s.level === 0 ? 'truco' : opt.free ? 'sin gastar espacio' : `espacio nv ${opt.slot}`;
+        const tag = spellTag(s, opt);
         add({ key: 'spell:' + sid, ...base, label: `${s.name} (${tag})`, desc: s.desc + (s.conc ? ' Requiere concentración.' : '') });
         // Metamagia
         if (has('metamagic')) {
@@ -183,7 +185,7 @@ module.exports = {
           if (s.kind !== 'smite' || (!s.anyWeapon && !lh.melee)) continue;
           const opt = this.castOption(pc, sid);
           if (!opt) continue;
-          add({ key: 'spell:' + sid, cost: 'bonus', group: 'Conjuros', ai: 'smite', label: `${s.name} sobre ${lt.name} (${opt.free ? 'sin gastar espacio' : `espacio nv ${opt.slot}`})`, target: 'none', desc: s.desc });
+          add({ key: 'spell:' + sid, cost: 'bonus', group: 'Conjuros', ai: 'smite', label: `${s.name} sobre ${lt.name} (${spellTag(s, opt)})`, target: 'none', desc: s.desc });
         }
       }
     }
@@ -426,7 +428,7 @@ module.exports = {
         pc.uses.channel -= 1;
         let pool = 5 * pc.level;
         const parts = [];
-        for (const p of this.activePCs().sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp)) {
+        for (const p of this.activePCs().sort(byHurt)) {
           const room = Math.floor(p.maxHp / 2) - p.hp;
           if (room <= 0 || pool <= 0) continue;
           const h = this.healPC(p, Math.min(room, pool));
@@ -454,7 +456,7 @@ module.exports = {
         const d = roll('2d6');
         this.addLog('spell', `🌿 ${pc.name} invoca la Ayuda de la tierra: brotan espinos (${d.detail}).`, { fx: { kind: 'spell', who: pc.id, dmgType: 'necrótico' } });
         for (const e of enemyT.slice(0, 3)) this.saveDamage(pc, e, 'con', dc, d, 'necrótico', true);
-        const p = this.activePCs().filter((x) => x.hp < x.maxHp).sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp)[0];
+        const p = this.activePCs().filter((x) => x.hp < x.maxHp).sort(byHurt)[0];
         if (p) { const r = roll('2d6'); const h = this.healPC(p, r.total); this.addLog('heal', `${p.name} recupera ${h} PG (${r.detail}).`); }
         break;
       }
@@ -779,7 +781,7 @@ module.exports = {
       case 'goodberry': {
         let pool = 10;
         const parts = [];
-        for (const p of this.activePCs().sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp)) {
+        for (const p of this.activePCs().sort(byHurt)) {
           if (pool <= 0 || p.hp >= p.maxHp) continue;
           const h = this.healPC(p, Math.min(pool, p.maxHp - p.hp, 4));
           pool -= h; parts.push(`${p.name} +${h}`);
@@ -979,9 +981,8 @@ module.exports = {
         if (s.cond && s.target === 'self' && pc.conditions[s.cond]) continue;
         const opt = this.castOption(pc, sid);
         if (!opt) continue;
-        const tag = s.level === 0 ? 'truco' : opt.free ? 'sin gastar espacio' : `espacio nv ${opt.slot}`;
         const up = s.level ? opt.slot - s.level : 0;
-        out.push({ key: 'spell:' + sid, label: `${s.name} (${tag})`, target: castTarget(s), maxTargets: maxTargetsOf(s, up), desc: s.desc, ai: aiOf(s) });
+        out.push({ key: 'spell:' + sid, label: `${s.name} (${spellTag(s, opt)})`, target: castTarget(s), maxTargets: maxTargetsOf(s, up), desc: s.desc, ai: aiOf(s) });
       }
     }
     for (const [id, n] of Object.entries(pc.inventory)) {

@@ -1,5 +1,5 @@
 // Personajes jugadores (reglas de 2024, SRD 5.2.1): creación desde plantilla, estadísticas derivadas y subida de nivel.
-const { mod, profBonus, levelForXp, XP_TABLE, ABILITIES } = require('./rules');
+const { mod, own, profBonus, levelForXp, XP_TABLE, ABILITIES, PHYSICAL } = require('./rules');
 const PREMADE = require('./data/characters');
 const ITEMS = require('./data/items');
 const SPELLS = require('./data/spells');
@@ -17,6 +17,16 @@ const TEMPLATES = {}; // id -> plantilla (pre-hechos al cargar; los creados en l
 const ABIL_KEYS = Object.keys(ABILITIES);
 const avgHitDie = (hd) => hd / 2 + 1;
 const tplOf = (pc) => TEMPLATES[pc.templateId];
+// Caché por plantilla y nivel: una plantilla no cambia una vez construida y estos cálculos se piden muchas veces por turno.
+// Lo que devuelve se comparte, así que los llamadores solo lo leen.
+const memoByLevel = (fn) => {
+  const cache = new WeakMap();
+  return (t, level) => {
+    let byLevel = cache.get(t);
+    if (!byLevel) cache.set(t, (byLevel = {}));
+    return level in byLevel ? byLevel[level] : (byLevel[level] = fn(t, level));
+  };
+};
 
 // Nombres de los recursos que se muestran en la ficha
 const RES_NAMES = {
@@ -52,7 +62,8 @@ function usesFor(t, level) {
   }
   return out;
 }
-const usesMax = (pc) => usesFor(tplOf(pc), pc.level);
+const usesAt = memoByLevel(usesFor);
+const usesMax = (pc) => usesAt(tplOf(pc), pc.level);
 
 function createPC(templateId, xp = 0) {
   const t = TEMPLATES[templateId];
@@ -112,22 +123,27 @@ function gainXp(pc, amount) {
   return msgs;
 }
 
+const featureLevels = new WeakMap(); // plantilla -> { rasgo: primer nivel en que se gana }
 function hasFeature(pc, f) {
   const t = tplOf(pc);
-  for (let l = 1; l <= pc.level; l++) if ((t.features[l] || []).includes(f)) return true;
-  return false;
+  let first = featureLevels.get(t);
+  if (!first) {
+    featureLevels.set(t, (first = Object.create(null)));
+    for (const [l, list] of Object.entries(t.features)) for (const x of list) if (!(first[x] <= +l)) first[x] = +l;
+  }
+  return first[f] <= pc.level;
 }
 const hasOpt = (pc, opt, val) => { const t = tplOf(pc); return !!(t.options[opt] && t.options[opt].includes(val)) && hasFeature(pc, val); };
 
 // ------------------------------------------------------------------ conjuros
 /** Conjuros de clase y de otras fuentes que conoce el personaje a su nivel */
-function knownSpells(pc) {
-  const t = tplOf(pc);
+const knownSpellsAt = memoByLevel((t, level) => {
   const out = [];
-  if (t.caster) for (let l = 0; l <= pc.level; l++) out.push(...(t.caster.spells[l] || []), ...(t.caster.always[l] || []));
-  for (const src of t.extraSpells) for (let l = 0; l <= pc.level; l++) out.push(...(src.spells[l] || []));
+  if (t.caster) for (let l = 0; l <= level; l++) out.push(...(t.caster.spells[l] || []), ...(t.caster.always[l] || []));
+  for (const src of t.extraSpells) for (let l = 0; l <= level; l++) out.push(...(src.spells[l] || []));
   return [...new Set(out)];
-}
+});
+const knownSpells = (pc) => knownSpellsAt(tplOf(pc), pc.level);
 
 /** De dónde sale un conjuro: { ability, cls (de clase), free (recurso para lanzarlo sin espacio) } */
 function spellSource(pc, sid) {
@@ -292,8 +308,7 @@ const martialDie = (pc) => { const t = tplOf(pc); return t.martialDie ? t.martia
 const breathDC = (pc) => 8 + mod(tplOf(pc).abilities.con) + profBonus(pc.level);
 const classDC = (pc, ability) => 8 + mod(tplOf(pc).abilities[ability]) + profBonus(pc.level);
 const isResistant = (pc, type) => (tplOf(pc).resist || []).includes(type)
-  || (pc.conditions.raging && ['contundente', 'cortante', 'perforante'].includes(type));
-const isDown = (pc) => pc.dead || pc.hp <= 0;
+  || (pc.conditions.raging && PHYSICAL.includes(type));
 const nextXp = (pc) => XP_TABLE[pc.level] ?? null;
 
 // ------------------------------------------------------------------ creación de personajes (asistente)
@@ -308,10 +323,10 @@ function buildTemplate(spec, id) {
   const D = CREATION.build();
   const name = String(spec.name || '').trim().replace(/\s+/g, ' ').slice(0, 28);
   if (name.length < 2) fail('Ponle un nombre a tu personaje');
-  const cls = Object.prototype.hasOwnProperty.call(CLASSES, spec.cls) ? CLASSES[spec.cls] : null; if (!cls) fail('Elige una clase');
-  const bg = Object.prototype.hasOwnProperty.call(BACKGROUNDS, spec.background) ? BACKGROUNDS[spec.background] : null; if (!bg) fail('Elige un trasfondo');
-  const sp = Object.prototype.hasOwnProperty.call(SPECIES, spec.species) ? SPECIES[spec.species] : null; if (!sp) fail('Elige una especie');
-  const kit = Object.prototype.hasOwnProperty.call(cls.kits, spec.kit) ? cls.kits[spec.kit] : null; if (!kit) fail('Elige tu equipo');
+  const cls = own(CLASSES, spec.cls); if (!cls) fail('Elige una clase');
+  const bg = own(BACKGROUNDS, spec.background); if (!bg) fail('Elige un trasfondo');
+  const sp = own(SPECIES, spec.species); if (!sp) fail('Elige una especie');
+  const kit = own(cls.kits, spec.kit); if (!kit) fail('Elige tu equipo');
   const fem = spec.gender === 'f';
 
   // características
@@ -500,7 +515,7 @@ for (const [id, p] of Object.entries(PREMADE)) {
 }
 
 module.exports = {
-  buildTemplate, randomSpec, breathDC, classDC, isResistant, POINT_COST, STD_ARRAY, RES_NAMES, resName,
-  TEMPLATES, createPC, gainXp, hasFeature, hasOpt, knownSpells, spellSource, skillMod, saveMod, initiativeMod, armorClass, weaponAttacks,
-  spellStats, maxSlots, critRange, sneakDice, martialDie, isDown, nextXp, avgHitDie, usesMax, abilityScore, abilityMod, isProficient, hasExpertise, maxHpFor,
+  buildTemplate, randomSpec, breathDC, classDC, isResistant, resName,
+  TEMPLATES, tplOf, createPC, gainXp, hasFeature, knownSpells, spellSource, skillMod, saveMod, initiativeMod, armorClass, weaponAttacks,
+  spellStats, maxSlots, critRange, sneakDice, martialDie, nextXp, usesMax, abilityScore, abilityMod, isProficient, hasExpertise,
 };
