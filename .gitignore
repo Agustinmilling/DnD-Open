@@ -12,3 +12,6 @@ inspiracion/fuentes/*
 !inspiracion/fuentes/.gitkeep
 *.pdf
 *.epub
+
+# Agentes importados de PescaSegura (material de origen; ya adaptados en .claude/agents/)
+agentes-pescasegura/
