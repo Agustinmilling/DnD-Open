@@ -74,11 +74,21 @@ const Music = (() => {
     });
   }
 
+  // Quita el reproductor (y su iframe) y deja el hueco listo para crear otro cuando vuelva a haber música.
+  function dropPlayer() {
+    if (player) { try { player.destroy(); } catch {} }
+    player = null; ready = false;
+    cur = { key: '', playing: false }; doneKey = ''; errKey = '';
+    const frame = $('.music-frame');
+    if (!$('#musicPlayer')) { const d = mk('div'); d.id = 'musicPlayer'; frame.replaceChildren(d); } // destroy() borra el elemento
+  }
+  const showFrame = () => $('.music-frame').classList.toggle('empty', !m.queue.length);
+
   // ---------------------------------------------------------------- sincronización con la sala
   function sync() {
     if (!ready || !unlocked) return;
     const id = m.queue[m.index];
-    if (!id) { if (cur.key) player.stopVideo(); cur = { key: '', playing: false }; return; }
+    if (!id) { dropPlayer(); return; } // lista vacía: stopVideo dejaría la miniatura y el botón de play a la vista
     const key = trackKey(), pos = expected();
     if (key !== cur.key) { // pista nueva: cargarla (en pausa solo se prepara, para que no suene)
       cur = { key, playing: m.playing }; doneKey = '';
@@ -95,13 +105,17 @@ const Music = (() => {
     player.setVolume(local.vol);
     if (local.mute) player.mute(); else player.unMute();
   }
-  function ensureApi() { if (unlocked && m.queue.length && api === 'idle') loadApi(); }
+  function ensureApi() {
+    if (!unlocked || !m.queue.length) return;
+    if (api === 'idle') loadApi();
+    else if (api === 'ready' && !player) makePlayer(); // se había quitado al vaciar la lista
+  }
   function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(local)); } catch {} applyLocal(); paint(); }
 
   /** Lo llama app.js con cada vista (o con null al volver al inicio). */
   function update(v) {
     inRoom = !!v;
-    if (!v) { setOpen(false); if (ready && cur.key) player.stopVideo(); cur = { key: '', playing: false }; m = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; editing = -1; return paint(); }
+    if (!v) { setOpen(false); dropPlayer(); m = { queue: [], names: [], index: 0, playing: false, pos: 0, at: 0 }; editing = -1; showFrame(); return paint(); }
     isHost = !!(v.you && v.you.isHost);
     const x = v.music || {}; // la vista no es de fiar del todo: se valida
     const rawNames = Array.isArray(x.names) ? x.names : []; // paralelo a queue; si falta o es corto, sin nombre
@@ -113,7 +127,7 @@ const Music = (() => {
       index: Number.isInteger(x.index) && x.index >= 0 && x.index < queue.length ? x.index : 0,
       pos: Number.isFinite(x.pos) && x.pos >= 0 ? x.pos : 0,
     };
-    ensureApi(); sync(); paint();
+    showFrame(); ensureApi(); sync(); paint(); // el marco se muestra antes de crear el reproductor
   }
 
   // ---------------------------------------------------------------- panel
