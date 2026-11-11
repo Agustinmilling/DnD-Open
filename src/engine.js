@@ -59,8 +59,14 @@ function sanitizeMsg(msg) {
     if (typeof msg[k] !== 'string' || msg[k].length > 80 || isBadKey(msg[k])) throw new Error('Datos no válidos');
     out[k] = msg[k];
   }
-  if (msg.text !== undefined) out.text = String(msg.text ?? '');
-  if (msg.label !== undefined && msg.label !== null) out.label = String(msg.label);
+  if (msg.text !== undefined && msg.text !== null) {
+    if (typeof msg.text !== 'string' && typeof msg.text !== 'number') throw new Error('Datos no válidos');
+    out.text = String(msg.text);
+  }
+  if (msg.label !== undefined && msg.label !== null) {
+    if (typeof msg.label !== 'string' && typeof msg.label !== 'number') throw new Error('Datos no válidos');
+    out.label = String(msg.label);
+  }
   for (const k of ['pos', 'index']) {
     if (msg[k] === undefined || msg[k] === null) continue;
     if (typeof msg[k] !== 'number' || !Number.isFinite(msg[k])) throw new Error('Datos no válidos');
@@ -701,7 +707,7 @@ class Room {
     const r = this.d20For(pc, mode);
     let total = r.natural + m;
     let extra = r.note;
-    if (pc.guidance) { const g = roll('1d4').total; total += g; extra += ` +${g} Orientación`; pc.guidance = false; }
+    if (pc.guidance) { const g = roll('1d4').total; total += g; extra += ` +${g} ${SPELLS.guidance.name}`; pc.guidance = false; }
     const dc = c.dc + (c.dcMod ? c.dcMod(this.flags) : 0);
     // Mente táctica (guerrero 2): si falla, gasta un uso de Tomar aliento para sumar 1d10
     if (total < dc && pc.uses.second_wind > 0 && C.hasFeature(pc, 'tactical_mind')) {

@@ -224,7 +224,7 @@ module.exports = {
     if (pc.shape && BEASTS[pc.shape].stealth && B && !k.hidden) add({ key: 'hide', cost: 'bonus', group: 'Rasgos', ai: 'self', label: `Esconderse (Sigilo ${fmtMod(BEASTS[pc.shape].stealth)})`, target: 'none', desc: 'Prueba de Sigilo CD 15: si la superas, tu próximo ataque tiene ventaja.' });
     if (has('lands_aid') && u.wild_shape > 0 && A && !pc.shape) add({ key: 'lands_aid', cost: 'action', group: 'Rasgos', ai: 'attack', label: 'Ayuda de la tierra (2d6 necrótico y 2d6 de curación)', target: 'enemies3', maxTargets: 3, desc: fdesc('lands_aid') });
     // Guerrero
-    if (u.second_wind > 0 && B) add({ key: 'second_wind', cost: 'bonus', group: 'Rasgos', ai: 'selfheal', label: `Tomar aliento (1d10+${pc.level} PG)`, target: 'none', desc: fdesc('second_wind') });
+    if (u.second_wind > 0 && B && pc.hp < pc.maxHp) add({ key: 'second_wind', cost: 'bonus', group: 'Rasgos', ai: 'selfheal', label: `Tomar aliento (1d10+${pc.level} PG)`, target: 'none', desc: fdesc('second_wind') });
     if (u.action_surge > 0 && !ts.surge) add({ key: 'action_surge', cost: 'free', group: 'Rasgos', ai: 'surge', label: 'Oleada de acción (+1 acción)', target: 'none', desc: fdesc('action_surge') });
     // Monje
     const unarmed = weapons.find((w) => w.unarmed);
@@ -266,7 +266,8 @@ module.exports = {
     for (const [id, n] of Object.entries(pc.inventory)) {
       if (!(n > 0) || !ITEMS[id] || !ITEMS[id].heal) continue;
       if (B && pc.hp < pc.maxHp) add({ key: 'item:' + id, cost: 'bonus', group: 'Objetos', ai: 'selfheal', label: `Beber ${ITEMS[id].name} (×${n})`, target: 'none', desc: `${ITEMS[id].desc} Beberla es una acción adicional.` });
-      if (A && others.some((p) => p.hp < p.maxHp)) add({ key: 'give:' + id, cost: 'action', group: 'Objetos', ai: 'heal', label: `Dar ${ITEMS[id].name} a un aliado`, target: 'ally', desc: `${ITEMS[id].desc} Dársela a otra criatura es una acción.` });
+      const fast = has('fast_hands'); // Manos rápidas (ladrón): dar una poción es acción adicional
+      if ((fast ? B : A) && others.some((p) => p.hp < p.maxHp)) add({ key: 'give:' + id, cost: fast ? 'bonus' : 'action', group: 'Objetos', ai: 'heal', label: `Dar ${ITEMS[id].name} a un aliado`, target: 'ally', desc: `${ITEMS[id].desc} Dársela a otra criatura es una acción${fast ? ' adicional (Manos rápidas)' : ''}.` });
     }
 
     // ---- acciones generales
@@ -303,8 +304,10 @@ module.exports = {
     const key = a.key;
 
     if (key === 'end') { this.addLog('turn', `${pc.name} termina su turno.`); return this.endTurn(); }
+    const had = { action: ts.action, bonus: ts.bonus };
     spend();
     const [head, arg] = key.split(':');
+    try {
     switch (head) {
       case 'attack': {
         const w = weapons[+arg];
@@ -400,6 +403,7 @@ module.exports = {
         this.addLog('action', `🎶 ${pc.name} inspira a ${ally.name}: podrá sumar 1d6 a una tirada con d20 que falle.`, { fx: { kind: 'buff', targets: [ally.id] } });
         break;
       case 'spark_heal': {
+        if (ally.hp >= ally.maxHp) throw new Error(`${ally.name} no tiene heridas que curar`);
         pc.uses.channel -= 1;
         const r = roll(`1d8${fmtMod(C.abilityMod(pc, 'wis'))}`);
         const h = this.healPC(ally, Math.max(1, r.total));
@@ -496,7 +500,7 @@ module.exports = {
         this.addLog('action', `✨ ${pc.name} consagra su arma: suma su Carisma a las tiradas de ataque y el arma brilla con luz sagrada.`, { fx: { kind: 'buff', targets: [pc.id] } });
         break;
       case 'hide': {
-        const m = pc.shape ? BEASTS[pc.shape].stealth : C.skillMod(pc, 'stealth');
+        const m = (pc.shape ? BEASTS[pc.shape].stealth : C.skillMod(pc, 'stealth')) - 2 * (pc.exhaustion || 0);
         const r = this.d20For(pc);
         const total = r.natural + m;
         const ok = total >= 15;
@@ -559,11 +563,12 @@ module.exports = {
         const key = ['grappled', 'restrained'].find((x) => pc.conditions[x] && pc.conditions[x].escape);
         const dc = pc.conditions[key].escape;
         const skill = key === 'grappled' && C.skillMod(pc, 'acrobatics') > C.skillMod(pc, 'athletics') ? 'acrobatics' : 'athletics';
-        const m = C.skillMod(pc, skill);
-        const r = this.d20For(pc, pc.conditions.raging && skill === 'athletics' ? 'adv' : 'normal');
+        const m = C.skillMod(pc, skill) - 2 * (pc.exhaustion || 0);
+        const why = (pc.conditions.raging && skill === 'athletics' && 'furia') || (key === 'grappled' && C.hasFeature(pc, 'powerful_build') && 'Constitución poderosa') || null;
+        const r = this.d20For(pc, why ? 'adv' : 'normal');
         const ok = r.natural + m >= dc;
         if (ok) delete pc.conditions[key];
-        this.addLog('roll', `${pc.name} intenta liberarse: ${skill === 'athletics' ? 'Atletismo' : 'Acrobacias'} d20(${r.natural})${fmtMod(m)} = ${r.natural + m} vs CD ${dc} → ${ok ? '¡se suelta!' : 'sigue atrapado'}.`, { success: ok });
+        this.addLog('roll', `${pc.name} intenta liberarse: ${skill === 'athletics' ? 'Atletismo' : 'Acrobacias'} d20(${why ? `${r.dice.join(',')} ventaja` : r.natural})${fmtMod(m)} = ${r.natural + m} vs CD ${dc}${why ? ` [${why}]` : ''} → ${ok ? '¡se suelta!' : 'sigue atrapado'}.`, { success: ok });
         break;
       }
       case 'detach':
@@ -571,6 +576,11 @@ module.exports = {
         this.addLog('action', `${pc.name} se arranca la estirge de un tirón.`);
         break;
       default: throw new Error('Acción desconocida');
+    }
+    } catch (e) {
+      // si la acción no se pudo hacer (objetivo no válido…), no se pierde la acción ni la acción adicional
+      ts.action = had.action; ts.bonus = had.bonus;
+      throw e;
     }
     if (this.combat === cb && !this.checkCombatEnd()) {
       // fin automático del turno si ya no quedan opciones útiles
@@ -624,6 +634,7 @@ module.exports = {
 
   useItem(pc, id, target) {
     if (!pc.inventory[id]) throw new Error('No te quedan');
+    if (target.hp >= target.maxHp) throw new Error(`${target.name} no tiene heridas que curar`);
     pc.inventory[id] -= 1;
     if (!pc.inventory[id]) delete pc.inventory[id];
     const r = roll(ITEMS[id].heal);
@@ -637,7 +648,7 @@ module.exports = {
       this.addLog('heal', `${pc.name} estabiliza a ${target.name} con su kit de sanador.`);
       return;
     }
-    const m = C.skillMod(pc, 'medicine');
+    const m = C.skillMod(pc, 'medicine') - 2 * (pc.exhaustion || 0);
     const r = this.d20For(pc).natural;
     const ok = r + m >= 10;
     if (ok) { target.stable = true; target.deathSaves = { s: 0, f: 0 }; }
@@ -646,7 +657,7 @@ module.exports = {
 
   layOnHands(pc, target) {
     const need = target.maxHp - target.hp;
-    if (need <= 0) throw new Error(`${target.name} no está herido`);
+    if (need <= 0) throw new Error(`${target.name} no tiene heridas que curar`);
     const amount = Math.min(pc.uses.lay_on_hands, need);
     pc.uses.lay_on_hands -= amount;
     const h = this.healPC(target, amount);
@@ -675,6 +686,8 @@ module.exports = {
     const opt = this.castOption(pc, sid);
     if (!opt) throw new Error('No puedes lanzar ese conjuro ahora');
     if (meta && (!META[meta] || (pc.uses.points || 0) < META[meta].cost)) throw new Error('No tienes puntos de hechicería');
+    if (s.kind === 'heal') { const tg = allies[0] || pc; if (tg.hp >= tg.maxHp) throw new Error(`${tg.name} no tiene heridas que curar`); }
+    if (sid === 'guidance' && (allies[0] || pc).guidance) throw new Error(`${(allies[0] || pc).name} ya tiene ${s.name} para su próxima prueba`);
     const st = C.spellStats(pc, sid);
     const src = C.spellSource(pc, sid) || {};
     const slot = opt.slot;
@@ -959,7 +972,7 @@ module.exports = {
         break;
       }
       default:
-        this.addLog('spell', `(${s.name} no tiene efecto mecánico en combate.)`);
+        this.addLog('spell', this.combat ? `(${s.name} no tiene efecto mecánico en combate.)` : `(${s.name} da ambiente a la escena, pero no cambia ninguna tirada.)`);
     }
   },
 

@@ -71,9 +71,11 @@
   function generate(species, gender = 'm', rnd = Math.random) {
     const style = STYLES[species] || STYLES.human;
     const g = gender === 'f' ? 'f' : 'm';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const n = style(rnd, g).replace(/\s+/g, ' ').trim().replace(/([aeiou])\1{2,}/gi, '$1$1');
-      if (n.length >= 2 && n.length <= 28 && !BAD.test(n)) return n;
+      const [first, last] = n.toLowerCase().split(' ');
+      const echo = last && first.length >= 3 && last.startsWith(first.slice(0, 4)); // «Luna Lunaqueda»
+      if (n.length >= 2 && n.length <= 28 && !BAD.test(n) && !/(.)\1\1/i.test(n) && !echo) return n; // ni «Oggga»
     }
     return pick(rnd, HUMAN[g]);
   }

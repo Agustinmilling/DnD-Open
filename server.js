@@ -69,7 +69,12 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (c) => { data += c; if (data.length > 20000) { reject(httpError(413, 'Cuerpo demasiado grande')); req.destroy(); } });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(httpError(400, 'JSON no válido')); } });
+    req.on('end', () => {
+      let body;
+      try { body = data ? JSON.parse(data) : {}; } catch { return reject(httpError(400, 'JSON no válido')); }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return reject(httpError(400, 'Petición no válida'));
+      resolve(body);
+    });
   });
 }
 
