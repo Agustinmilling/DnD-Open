@@ -67,6 +67,18 @@
   };
   applyFont();
 
+  // ------------------------------------------------------------------ alturas reales de la barra, el pie y las pestañas
+  // La partida ocupa justo la pantalla: con letra grande la barra crece, así que se mide en vez de suponerla.
+  function measureChrome() {
+    const set = (name, el) => { if (el && el.offsetHeight) document.documentElement.style.setProperty(name, el.offsetHeight + 'px'); };
+    set('--topbar-h', $('.topbar'));
+    set('--footer-h', $('.attribution'));
+    set('--tabs-h', $('.mobile-tabs'));
+  }
+  if (window.ResizeObserver) { const ro = new ResizeObserver(measureChrome); for (const el of [$('.topbar'), $('.attribution'), $('.mobile-tabs')]) if (el) ro.observe(el); }
+  window.addEventListener('resize', measureChrome);
+  measureChrome();
+
   // ------------------------------------------------------------------ ayudas de animación
   const animOn = () => motionOn && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** Reinicia una animación CSS de clase (p. ej. 'swap') en un elemento */
@@ -257,6 +269,7 @@
   }
   function renderChat(v) {
     const box = $('#chat');
+    const bulk = v.chat.filter((m) => m.id > S.lastChat).length > 5; // historial que llega de golpe: sin animación
     for (const m of v.chat) {
       if (m.id <= S.lastChat) continue;
       S.lastChat = m.id;
@@ -270,6 +283,7 @@
         div.className = 'msg muted small';
         div.textContent = m.text;
       } else div.innerHTML = `${who}: ${esc(m.text)}`;
+      if (bulk) div.classList.add('noanim');
       box.appendChild(div);
     }
   }
@@ -391,7 +405,7 @@
 
   function pcTags(p) {
     const cond = p.conditions.map((c) => `<span class="tag ${GOOD_CONDS.includes(c.key) ? 'good' : 'bad'}" title="${esc(c.desc || '')}">${esc(c.name)}${c.rounds ? ` <small>${c.rounds}</small>` : ''}</span>`).join('');
-    const extra = [p.concentration ? `<span class="tag">🧠 ${esc(p.concentration)}</span>` : '', p.guidance ? '<span class="tag good">Orientación</span>' : '', p.shape ? `<span class="tag good">${p.shape.icon} ${esc(p.shape.name)}</span>` : '', p.images ? `<span class="tag good">Imágenes ×${p.images}</span>` : '', p.enhanced ? '<span class="tag good">Potenciar característica</span>' : ''].join('');
+    const extra = [p.concentration ? `<span class="tag">🧠 ${esc(p.concentration)}</span>` : '', p.guidance ? '<span class="tag good" title="Suma 1d4 a su próxima prueba de característica">Guía +1d4</span>' : '', p.shape ? `<span class="tag good">${p.shape.icon} ${esc(p.shape.name)}</span>` : '', p.images ? `<span class="tag good">Imágenes ×${p.images}</span>` : '', p.enhanced ? '<span class="tag good">Potenciar característica</span>' : ''].join('');
     const pips = (n, cls) => `<span class="ds ${cls}">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;
     const death = p.down ? `<div class="death">${p.stable ? '<b>Estable</b>' : `Salvaciones contra muerte ${pips(p.deathSaves.s, 's')} ${pips(p.deathSaves.f, 'f')}`}</div>` : '';
     return death + (cond || extra ? `<div class="tags">${cond}${extra}</div>` : '');
@@ -524,6 +538,7 @@
 
   function renderLog(v) {
     const box = $('#log');
+    const bulk = v.log.filter((e) => e.id > S.lastLog).length > 12; // historial que llega de golpe (al entrar o recargar)
     for (const e of v.log) {
       if (e.id <= S.lastLog) continue;
       S.lastLog = e.id;
@@ -532,7 +547,7 @@
       let first = false;
       if (e.kind === 'scene') S.afterScene = true;
       else if (e.kind === 'narration' && S.afterScene && !e.title) { first = true; S.afterScene = false; }
-      d.className = `entry k-${e.kind} ${e.title ? 'title' : ''} ${res} ${e.crit ? 'crit' : ''} ${first ? 'first' : ''} ${e.ending ? 'ending tone-' + e.ending : ''}`;
+      d.className = `entry k-${e.kind} ${e.title ? 'title' : ''} ${res} ${e.crit ? 'crit' : ''} ${first ? 'first' : ''} ${e.ending ? 'ending tone-' + e.ending : ''} ${bulk ? 'noanim' : ''}`;
       d.textContent = e.text;
       box.appendChild(d);
     }

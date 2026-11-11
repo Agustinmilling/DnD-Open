@@ -282,7 +282,7 @@ module.exports = {
           if (c.dead) break;
           continue;
         }
-        if (typeof v.rounds === 'number') { v.rounds -= 1; if (v.rounds <= 0) delete c.conditions[k]; }
+        if (typeof v.rounds === 'number') { v.rounds -= 1; if (v.rounds <= 0) { if (k === 'raging') this.endRage(c); else delete c.conditions[k]; } }
       }
       // efectos que duran "hasta el final del siguiente turno de quien los causó"
       for (const o of this.allCombatants()) {

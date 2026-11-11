@@ -765,3 +765,29 @@ dialog.closing::backdrop { animation: fadeOut .22s ease-in both; }
 html.no-motion .log, html.no-motion .chat, html.no-motion .gwin-body, html.no-motion .wz-body, html.no-motion .sheet-dialog { scroll-behavior: auto; }
 .enter { animation: panelIn .45s var(--ease-out) both; }
 #fontBtn { font-family: var(--serif); font-weight: 700; letter-spacing: .02em; }
+.entry.noanim, .msg.noanim, .msg.noanim .rollcard { animation: none; }
+
+/* ---------- la partida ocupa justo la pantalla con cualquier tamaño de letra (app.js mide la barra, el pie y las pestañas) ---------- */
+#game { height: calc(100vh - var(--topbar-h, 47px) - var(--footer-h, 34px)); height: calc(100dvh - var(--topbar-h, 47px) - var(--footer-h, 34px)); }
+.brand, .topbar nav .btn, .room-info { white-space: nowrap; }
+@media (max-width: 900px) {
+  /* En el móvil la historia fluye hacia abajo: el registro siempre tiene una altura legible
+     y la lista de acciones se ve entera desplazando la página (antes el registro quedaba aplastado en combate). */
+  #game { height: auto; }
+  .mobile-tabs { top: var(--topbar-h, 54px); }
+  .mobile-tabs button { white-space: nowrap; padding: 9px 4px; }
+  .story { height: auto; overflow: visible; }
+  .story .scene-banner { border-radius: 15px 15px 0 0; }
+  .story .log { flex: none; height: clamp(210px, 42vh, 380px); height: clamp(210px, 42dvh, 380px); padding: 12px 14px 14px; }
+  .story.in-combat .log, .scene-banner.combat ~ .log { height: clamp(150px, 27vh, 260px); height: clamp(150px, 27dvh, 260px); }
+  .story .action-panel { max-height: none; overflow: visible; border-radius: 0 0 15px 15px; }
+  #game .chatbox { height: calc(100vh - var(--topbar-h, 54px) - var(--tabs-h, 50px) - 22px); height: calc(100dvh - var(--topbar-h, 54px) - var(--tabs-h, 50px) - 22px); min-height: 400px; }
+  .scene-banner { height: 92px; }
+  .scene-banner.combat { height: 232px; }
+}
+@media (max-width: 520px) {
+  .brand-text, .nav-text { display: none; }
+  .brand-die { font-size: 1.5rem; }
+  .topbar { gap: 10px; }
+}
+body { overflow-x: clip; }
