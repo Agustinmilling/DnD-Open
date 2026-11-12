@@ -14,6 +14,28 @@ const ADVENTURES = require('./data/adventures');
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 let logSeq = 0;
+let viewRev = 0; // cada ficha recalculada recibe un número nuevo: así se sabe si un cliente ya la tiene
+
+/**
+ * Últimas n entradas de una lista con id creciente. Si el cliente ya tiene hasta `sinceId`, solo las posteriores
+ * (con inclusive=true se reenvía también esa, por si ha ganado efectos visuales desde entonces).
+ */
+/** Cambios de una ficha respecto a la que ya tiene el cliente: solo los campos distintos (y los que desaparecen, en _del) */
+function pcPatch(prev, cur) {
+  const out = [`"id":${cur.parts.id}`, '"_patch":true'];
+  for (const k of Object.keys(cur.parts)) if (k !== 'id' && prev.parts[k] !== cur.parts[k]) out.push(`${JSON.stringify(k)}:${cur.parts[k]}`);
+  const gone = Object.keys(prev.parts).filter((k) => !(k in cur.parts));
+  if (gone.length) out.push(`"_del":${JSON.stringify(gone)}`);
+  return `{${out.join(',')}}`;
+}
+
+function tail(list, n, sinceId, inclusive) {
+  const from = Math.max(0, list.length - n);
+  if (!sinceId) return list.slice(from);
+  let i = list.length;
+  while (i > from && (inclusive ? list[i - 1].id >= sinceId : list[i - 1].id > sinceId)) i--;
+  return list.slice(i);
+}
 
 const AFK_MS = 120000;
 
@@ -21,6 +43,9 @@ const AFK_MS = 120000;
 const ADVENTURE_INFO = Object.fromEntries(Object.entries(ADVENTURES).map(([k, a]) => [k, {
   id: a.id, title: a.title, summary: a.summary, art: a.art || 'tavern', length: a.length || '', endings: a.endingCount || 0, tags: a.tags || [],
 }]));
+const ADVENTURE_LIST = Object.values(ADVENTURE_INFO);
+// Partes de la vista que se reutilizan tal cual entre envíos: si el objeto es el mismo, no se vuelve a serializar.
+const STABLE_KEYS = new Set(['catalog', 'adventure', 'adventures']);
 // PG y CA de nivel 1 de cada plantilla para el catálogo (se calculan una vez por plantilla)
 const level1Cache = new WeakMap();
 function level1Stats(t) {
@@ -136,6 +161,8 @@ class Room {
     this.log = [];
     this.chat = [];
     this.listeners = new Set();
+    this.pcViews = new Map(); // id de personaje -> ficha ya calculada y serializada (ver pcViewCached)
+    this.catalogs = new Map(); // id de jugador -> catálogo ya calculado (ver catalogFor)
     this.timers = new Set();
     this.lastActivity = Date.now();
     this.advId = Object.keys(ADVENTURES)[0];
@@ -878,7 +905,106 @@ class Room {
     };
   }
 
-  viewFor(pid) {
+  /**
+   * Ficha de un personaje para el cliente, calculada una sola vez mientras el personaje no cambie.
+   * Antes se recalculaba entera (ataques, habilidades, conjuros…) para cada jugador en cada cambio de la sala.
+   * Devuelve { view, json, parts, rev }: el objeto, su JSON ya serializado (entero y por campos) y un número
+   * que cambia cuando cambia la ficha.
+   */
+  pcViewCached(pc) {
+    const owner = this.ownerOf(pc);
+    const sig = `${JSON.stringify(pc)}|${owner ? `${owner.name}|${owner.connected ? 1 : 0}` : ''}`;
+    let e = this.pcViews.get(pc.id);
+    if (!e || e.sig !== sig) {
+      const view = this.pcView(pc);
+      // se serializa campo a campo: así, cuando la ficha cambia, se puede enviar solo el campo distinto (ver pcPatch)
+      const parts = {};
+      for (const k of Object.keys(view)) { const j = JSON.stringify(view[k]); if (j !== undefined) parts[k] = j; }
+      const json = `{${Object.keys(parts).map((k) => `${JSON.stringify(k)}:${parts[k]}`).join(',')}}`;
+      e = { sig, view, json, parts, rev: ++viewRev };
+      this.pcViews.set(pc.id, e);
+      if (this.pcViews.size > 64) for (const id of this.pcViews.keys()) if (!this.pcs[id]) this.pcViews.delete(id);
+    }
+    return e;
+  }
+
+  /** Vista completa para un jugador. since = { log, chat }: ids que el cliente ya tiene (solo recibe lo posterior). */
+  viewFor(pid, since = null) {
+    const v = this.buildView(pid, since);
+    v.pcs = v.pcs.map((e) => e.view);
+    return v;
+  }
+
+  /**
+   * Vista ya serializada para enviarla. Las fichas no se vuelven a serializar: se reutiliza su JSON.
+   * Con `conn` (estado de una conexión en directo: {}) solo se envía lo que ha cambiado desde el envío anterior:
+   * claves iguales se omiten, las que desaparecen van a null, los personajes sin cambios van solo con su id y
+   * del registro y el chat solo las entradas nuevas. Devuelve null si no hay nada nuevo que enviar.
+   * El cliente lo recompone con public/viewsync.js.
+   */
+  viewJSON(pid, conn = null, since = null) {
+    if (!conn) {
+      const v = this.buildView(pid, since);
+      const pcs = v.pcs;
+      delete v.pcs;
+      return `{"pcs":[${pcs.map((e) => e.json).join(',')}],${JSON.stringify(v).slice(1)}`;
+    }
+    const first = !conn.keys;
+    if (first) { conn.keys = new Map(); conn.pcs = new Map(); conn.refs = new Map(); conn.since = null; }
+    const v = this.buildView(pid, conn.since);
+    const parts = first ? [] : ['"_delta":true'];
+    const base = parts.length;
+    for (const k of Object.keys(v)) {
+      let json;
+      if (k === 'pcs') {
+        // ficha nueva: entera; sin cambios: solo su id; con cambios: solo los campos distintos
+        json = `[${v.pcs.map((e) => {
+          const prev = conn.pcs.get(e.view.id);
+          return !prev ? e.json : prev.rev === e.rev ? e.parts.id : pcPatch(prev, e);
+        }).join(',')}]`;
+        // solo se recuerda lo que el cliente conserva: los personajes de este envío
+        conn.pcs = new Map(v.pcs.map((e) => [e.view.id, e]));
+      } else if (STABLE_KEYS.has(k)) {
+        if (conn.refs.get(k) === v[k]) continue; // el mismo objeto que la vez anterior
+        conn.refs.set(k, v[k]);
+        json = JSON.stringify(v[k]);
+      } else json = JSON.stringify(v[k]);
+      if (json === undefined || conn.keys.get(k) === json) continue;
+      conn.keys.set(k, json);
+      parts.push(`${JSON.stringify(k)}:${json}`);
+    }
+    for (const k of [...conn.keys.keys()]) if (v[k] === undefined) { conn.keys.delete(k); parts.push(`${JSON.stringify(k)}:null`); }
+    const lastLog = this.log.length ? this.log[this.log.length - 1].id : 0;
+    const lastChat = this.chat.length ? this.chat[this.chat.length - 1].id : 0;
+    conn.since = { log: lastLog, chat: lastChat };
+    return parts.length > base ? `{${parts.join(',')}}` : null;
+  }
+
+  /**
+   * Catálogo de personajes elegibles tal como lo ve un jugador. Solo cambia cuando alguien elige, suelta, crea o
+   * borra un personaje: mientras tanto se devuelve el mismo objeto (viewJSON lo reconoce y no vuelve a serializarlo).
+   */
+  catalogFor(pid, takenBy) {
+    const list = Object.values(C.TEMPLATES).filter((t) => !t.custom || t.room === this.code);
+    let sig = '';
+    for (const t of list) { const taken = takenBy.get(t.id); sig += `${t.id}:${taken ? `${taken.id}:${taken.name}` : ''}|`; }
+    const hit = this.catalogs.get(pid);
+    if (hit && hit.sig === sig) return hit.list;
+    const out = list.map((t) => {
+      const taken = takenBy.get(t.id);
+      const l1 = level1Stats(t);
+      return {
+        id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, role: t.role, stats: t.stats, hp: l1.hp, ac: l1.ac,
+        takenBy: taken ? taken.name : null, takenById: taken ? taken.id : null, custom: !!t.custom, mine: !!(t.custom && t.creator === pid),
+      };
+    });
+    if (this.catalogs.size > 32) this.catalogs.clear();
+    this.catalogs.set(pid, { sig, list: out });
+    return out;
+  }
+
+  /** Construye la vista; en `pcs` deja las fichas en caché ({ view, json, rev }) para que quien llama elija qué usar. */
+  buildView(pid, since = null) {
     const me = this.players[pid];
     const myPc = me && me.charId ? this.pcs[me.charId] : null;
     const def = this.sceneDef();
@@ -888,21 +1014,14 @@ class Room {
       code: this.code, phase: this.phase, hostId: this.hostId,
       you: me ? { id: me.id, name: me.name, charId: me.charId, isHost: me.id === this.hostId } : null,
       players: Object.values(this.players).map((p) => ({ id: p.id, name: p.name, charId: p.charId, connected: p.connected, isHost: p.id === this.hostId })),
-      catalog: Object.values(C.TEMPLATES).filter((t) => !t.custom || t.room === this.code).map((t) => {
-        const taken = takenBy.get(t.id);
-        const l1 = level1Stats(t);
-        return {
-          id: t.id, name: t.name, race: t.race, className: t.className, subclass: t.subclass, portrait: t.portrait, color: t.color, bio: t.bio, background: t.background, role: t.role, stats: t.stats, hp: l1.hp, ac: l1.ac,
-          takenBy: taken ? taken.name : null, takenById: taken ? taken.id : null, custom: !!t.custom, mine: !!(t.custom && t.creator === pid),
-        };
-      }),
+      catalog: this.catalogFor(pid, takenBy),
       adventure: ADVENTURE_INFO[this.advId],
-      adventures: Object.values(ADVENTURE_INFO),
+      adventures: ADVENTURE_LIST,
       journal: this.phase === 'lobby' ? [] : this.flagOrder.filter((k) => this.flags[k] && this.adv.journal && this.adv.journal[k]).map((k) => this.txt(this.adv.journal[k])),
-      pcs: this.partyPCs().map((p) => this.pcView(p)),
+      pcs: this.partyPCs().map((p) => this.pcViewCached(p)),
       party: { gold: this.party.gold, loot: Object.entries(this.party.loot).map(([id, n]) => ({ id, name: ITEMS[id].name, qty: n, desc: ITEMS[id].desc })) },
-      log: this.log.slice(-200),
-      chat: this.chat.slice(-120),
+      log: tail(this.log, 200, since && since.log, true),
+      chat: tail(this.chat, 120, since && since.chat, false),
       music: { queue: this.music.queue.slice(), names: this.music.names.slice(), index: this.music.index, playing: this.music.playing, pos: Math.round(Math.min(this.musicPos(), 86400) * 10) / 10 },
     };
     if (def && this.phase !== 'lobby') {
