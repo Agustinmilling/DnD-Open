@@ -2,6 +2,8 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+const crypto = require('crypto');
 const { Room } = require('./src/engine');
 const glossary = require('./src/glossary').build();
 const creation = require('./src/creation').build();
@@ -65,6 +67,52 @@ function send(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// ---------------------------------------------------------------- contenido que no cambia: en memoria, comprimido y con ETag
+// Los archivos de public/ y los datos del glosario y de la creación se leen, serializan y comprimen una sola vez.
+// El navegador los revalida con ETag (respuesta 304 sin cuerpo) y los recibe con brotli o gzip.
+const COMPRESSIBLE = /^(text\/|application\/(javascript|json)|image\/svg)/;
+function makeAsset(raw, type, tag) {
+  const zip = COMPRESSIBLE.test(type) && raw.length > 1024;
+  return {
+    raw, type, etag: `W/"${tag}"`,
+    br: zip ? zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length } }) : null,
+    gz: zip ? zlib.gzipSync(raw, { level: 9 }) : null,
+  };
+}
+function sendAsset(req, res, a) {
+  const headers = { 'Content-Type': a.type, 'Cache-Control': 'no-cache', ETag: a.etag, Vary: 'Accept-Encoding', ...SECURITY_HEADERS };
+  if (req.headers['if-none-match'] === a.etag) { res.writeHead(304, headers); return res.end(); }
+  const accepts = String(req.headers['accept-encoding'] || '');
+  let body = a.raw;
+  if (a.br && /\bbr\b/.test(accepts)) { body = a.br; headers['Content-Encoding'] = 'br'; }
+  else if (a.gz && /\bgzip\b/.test(accepts)) { body = a.gz; headers['Content-Encoding'] = 'gzip'; }
+  headers['Content-Length'] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+const fileCache = new Map(); // ruta -> { mtimeMs, asset }
+function sendFile(req, res, full) {
+  fs.stat(full, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404); return res.end('No encontrado'); }
+    const hit = fileCache.get(full);
+    if (hit && hit.mtimeMs === st.mtimeMs) return sendAsset(req, res, hit.asset);
+    fs.readFile(full, (err2, raw) => {
+      if (err2) { res.writeHead(404); return res.end('No encontrado'); }
+      const asset = makeAsset(raw, MIME[path.extname(full)] || 'application/octet-stream', `${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}`);
+      fileCache.set(full, { mtimeMs: st.mtimeMs, asset });
+      sendAsset(req, res, asset);
+    });
+  });
+}
+const dataAssets = {};
+function dataAsset(name, obj) {
+  if (!dataAssets[name]) {
+    const raw = Buffer.from(JSON.stringify(obj));
+    dataAssets[name] = makeAsset(raw, 'application/json; charset=utf-8', `${name}-${crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16)}`);
+  }
+  return dataAssets[name];
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -85,10 +133,16 @@ function subscribe(room, pid, res) {
   res.write(`: ${' '.repeat(2048)}\n\n`);
   openStreams += 1;
   let pending = false;
+  const conn = {}; // lo que ya tiene este cliente: después del primer envío solo viaja lo que cambia
   const push = () => {
     if (pending) return;
     pending = true;
-    setImmediate(() => { pending = false; res.write(`data: ${JSON.stringify(room.viewFor(pid))}\n\n`); });
+    setImmediate(() => {
+      pending = false;
+      if (res.writableEnded || res.destroyed) return;
+      const data = room.viewJSON(pid, conn);
+      if (data) res.write(`data: ${data}\n\n`);
+    });
   };
   room.listeners.add(push);
   const conns = room.conns;
@@ -112,9 +166,13 @@ function markPoll(room, pid) {
   room.pollSeen[pid] = Date.now();
   if (room.players[pid] && !room.players[pid].connected) room.setConnected(pid, true);
 }
-function longPoll(room, pid, since, res) {
+function longPoll(room, pid, since, res, have) {
   markPoll(room, pid);
-  const reply = () => { markPoll(room, pid); send(res, 200, { v: room.version, view: room.viewFor(pid) }); };
+  const reply = () => {
+    markPoll(room, pid);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
+    res.end(`{"v":${room.version},"view":${room.viewJSON(pid, null, have)}}`);
+  };
   if (room.version !== since) return reply();
   let done = false;
   const finish = (withView) => {
@@ -142,8 +200,8 @@ const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
   try {
     if (url.pathname === '/healthz') return send(res, 200, { ok: true, rooms: rooms.size, streams: openStreams });
-    if (url.pathname === '/api/glossary') return send(res, 200, glossary);
-    if (url.pathname === '/api/creation') return send(res, 200, creation);
+    if (url.pathname === '/api/glossary') return sendAsset(req, res, dataAsset('glossary', glossary));
+    if (url.pathname === '/api/creation') return sendAsset(req, res, dataAsset('creation', creation));
     if (url.pathname === '/api/room' && req.method === 'POST') {
       if (limited(`room:${ip}`, LIMITS.roomsPerIp, 600000)) return send(res, 429, { error: 'Has creado demasiadas salas. Espera unos minutos.' });
       if (rooms.size >= LIMITS.maxRooms) return send(res, 503, { error: 'El servidor está lleno ahora mismo. Prueba más tarde.' });
@@ -174,7 +232,9 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/poll') {
       const { room, player: p } = authRoom(url.searchParams.get('code'), url.searchParams.get('pid'), url.searchParams.get('token'));
       if (openStreams >= LIMITS.maxStreams) return send(res, 503, { error: 'Demasiadas conexiones abiertas' });
-      return longPoll(room, p.id, Number(url.searchParams.get('v')), res);
+      // l y c: hasta qué entrada del registro y del chat tiene ya el cliente (solo se le envía lo posterior)
+      const id = (k) => { const n = Number(url.searchParams.get(k)); return Number.isSafeInteger(n) && n > 0 ? n : 0; };
+      return longPoll(room, p.id, Number(url.searchParams.get('v')), res, { log: id('l'), chat: id('c') });
     }
     if (url.pathname === '/api/action' && req.method === 'POST') {
       const body = await readBody(req);
@@ -194,11 +254,7 @@ const server = http.createServer(async (req, res) => {
     const full = path.normalize(path.join(PUBLIC, decodeURIComponent(file)));
     if (!full.startsWith(PUBLIC + path.sep)) return send(res, 403, { error: 'Prohibido' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Método no permitido' });
-    fs.readFile(full, (err, data) => {
-      if (err) { res.writeHead(404); return res.end('No encontrado'); }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ...SECURITY_HEADERS });
-      res.end(data);
-    });
+    sendFile(req, res, full);
   } catch (e) {
     if (!e.status) console.error(new Date().toISOString(), req.method, url.pathname, e.message);
     if (!res.headersSent) send(res, e.status || 500, { error: e.message });
@@ -219,6 +275,15 @@ server.headersTimeout = 15000;
 if (require.main === module) {
   process.on('uncaughtException', (e) => console.error(new Date().toISOString(), 'uncaughtException', e));
   process.on('unhandledRejection', (e) => console.error(new Date().toISOString(), 'unhandledRejection', e));
+  // Se dejan listos (leídos y comprimidos) los archivos y datos fijos antes de atender a nadie.
+  const t0 = Date.now();
+  dataAsset('glossary', glossary); dataAsset('creation', creation);
+  for (const f of fs.readdirSync(PUBLIC)) {
+    const full = path.join(PUBLIC, f);
+    const st = fs.statSync(full);
+    if (st.isFile()) fileCache.set(full, { mtimeMs: st.mtimeMs, asset: makeAsset(fs.readFileSync(full), MIME[path.extname(full)] || 'application/octet-stream', `${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}`) });
+  }
+  console.log(`Archivos y datos fijos preparados en ${Date.now() - t0} ms.`);
   server.listen(PORT, () => console.log(`🎲 Mesa de Dados escuchando en http://localhost:${PORT}`));
 }
 module.exports = { server, rooms };

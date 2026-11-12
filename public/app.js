@@ -139,12 +139,14 @@
   // Tiempo real: primero SSE. Si en unos segundos no llega nada (algunos túneles y proxies retienen SSE),
   // se pasa a sondeo largo (/api/poll), que funciona en cualquier red. La pestaña recuerda qué modo funcionó.
   let liveGen = 0;
+  const sync = ViewSync.create(); // recompone la vista: el servidor solo envía lo que cambia
   const POLL_KEY = 'mesa:poll';
   function connect() {
     if (S.es) { S.es.close(); S.es = null; }
     const gen = ++liveGen;
     history.replaceState(null, '', `/?sala=${S.code}`);
     Object.assign(S, { lastLog: 0, lastChat: 0, fxReady: false, art: null, afterScene: false });
+    sync.reset();
     S.fxDone.clear();
     $('#log').innerHTML = ''; $('#chat').innerHTML = '';
     let usePoll = false;
@@ -159,7 +161,7 @@
       try { sessionStorage.setItem(POLL_KEY, '1'); } catch {}
       pollLoop(gen);
     }, 4000);
-    es.onmessage = (ev) => { got = true; clearTimeout(fallback); S.view = JSON.parse(ev.data); render(); };
+    es.onmessage = (ev) => { got = true; clearTimeout(fallback); S.view = sync.apply(JSON.parse(ev.data)); render(); };
     es.onerror = async () => {
       // si la sala ya no existe, volver al inicio
       try {
@@ -177,14 +179,15 @@
     let v = -1;
     while (gen === liveGen) {
       try {
-        const r = await fetch(`/api/poll?code=${S.code}&pid=${S.pid}&token=${S.token}&v=${v}`, { cache: 'no-store' });
+        const have = sync.since(); // el servidor solo envía el registro y el chat posteriores a lo que ya tenemos
+        const r = await fetch(`/api/poll?code=${S.code}&pid=${S.pid}&token=${S.token}&v=${v}&l=${have.log}&c=${have.chat}`, { cache: 'no-store' });
         if (gen !== liveGen) return;
         if (r.status === 404 || r.status === 403) return roomGone();
         if (!r.ok) { await new Promise((ok) => setTimeout(ok, 2000)); continue; }
         const d = await r.json();
         if (gen !== liveGen) return;
         v = d.v;
-        if (d.view) { S.view = d.view; render(); }
+        if (d.view) { S.view = sync.apply(d.view); render(); }
       } catch {
         await new Promise((ok) => setTimeout(ok, 2000));
       }

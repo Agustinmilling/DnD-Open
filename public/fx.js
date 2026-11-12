@@ -345,11 +345,13 @@
     const ctx = canvas.getContext('2d');
     let raf = 0;
     const parts = [];
-    const resize = () => { canvas.width = canvas.clientWidth * devicePixelRatio; canvas.height = canvas.clientHeight * devicePixelRatio; };
+    // En pantallas muy densas (móviles 3x) el lienzo se limita a 2x: se ve igual y pinta menos de la mitad de píxeles.
+    const dpr = () => Math.min(2, window.devicePixelRatio || 1);
+    const resize = () => { canvas.width = canvas.clientWidth * dpr(); canvas.height = canvas.clientHeight * dpr(); };
     resize();
     const N = { rain: 90, fireflies: 26, leaves: 18, mist: 14, dust: 40, embers: 34, spores: 30 }[kind] || 20;
     const spawn = (init) => {
-      const w = canvas.width, h = canvas.height, d = devicePixelRatio;
+      const w = canvas.width, h = canvas.height, d = dpr();
       const p = { x: Math.random() * w, y: init ? Math.random() * h : (kind === 'embers' || kind === 'spores' ? h + 5 : -5), t: Math.random() * 6.28 };
       if (kind === 'rain') Object.assign(p, { vx: -1.2 * d, vy: (7 + Math.random() * 5) * d, l: 10 * d });
       else if (kind === 'fireflies') Object.assign(p, { vx: 0, vy: 0, r: (1 + Math.random() * 1.5) * d, y: Math.random() * h });
@@ -360,28 +362,51 @@
       return p;
     };
     for (let i = 0; i < N; i++) parts.push(spawn(true));
-    const tick = () => {
+    // Niebla: el degradado se dibuja una sola vez en un sello y después se estampa (antes se creaba uno por jirón y fotograma).
+    let mistStamp = null;
+    if (kind === 'mist') {
+      mistStamp = document.createElement('canvas');
+      mistStamp.width = mistStamp.height = 128;
+      const sc = mistStamp.getContext('2d');
+      const g = sc.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(220,230,240,.07)'); g.addColorStop(1, 'rgba(220,230,240,0)');
+      sc.fillStyle = g; sc.fillRect(0, 0, 128, 128);
+    }
+    const FLAT = { leaves: 'rgba(160,120,50,.8)', dust: 'rgba(230,220,200,0.35)' }[kind]; // colores que no cambian
+    let visible = true;
+    let last = 0;
+    const tick = (now) => {
+      raf = requestAnimationFrame(tick);
+      // Solo se pinta si el lienzo se ve, y como mucho unas 60-80 veces por segundo aunque el monitor vaya a 144 Hz o más.
+      if (!visible || (now && now - last < 12)) return;
+      last = now || 0;
       const w = canvas.width, h = canvas.height;
       ctx.clearRect(0, 0, w, h);
+      if (kind === 'rain') { ctx.strokeStyle = 'rgba(170,200,235,.35)'; ctx.lineWidth = 1; ctx.beginPath(); } // toda la lluvia en un solo trazo
+      else if (FLAT) ctx.fillStyle = FLAT;
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
         p.t += 0.02;
         if (kind === 'fireflies') { p.x += Math.cos(p.t * 1.3) * 0.6; p.y += Math.sin(p.t) * 0.4; }
         else { p.x += p.vx + (kind === 'leaves' ? Math.sin(p.t) * 0.8 : 0); p.y += p.vy; }
         if (p.y > h + 10 || p.y < -10 || p.x > w + 120 || p.x < -120) { parts[i] = spawn(false); if (kind === 'mist') parts[i].x = -100; continue; }
-        if (kind === 'rain') { ctx.strokeStyle = 'rgba(170,200,235,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.vx, p.y + p.l); ctx.stroke(); }
-        else if (kind === 'mist') { const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); g.addColorStop(0, 'rgba(220,230,240,.07)'); g.addColorStop(1, 'rgba(220,230,240,0)'); ctx.fillStyle = g; ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); }
+        if (kind === 'rain') { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.vx, p.y + p.l); }
+        else if (kind === 'mist') ctx.drawImage(mistStamp, p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
         else {
-          const a = kind === 'fireflies' ? 0.4 + 0.6 * Math.abs(Math.sin(p.t * 2)) : kind === 'dust' ? 0.35 : 0.8;
-          ctx.fillStyle = { fireflies: `rgba(220,255,140,${a})`, leaves: 'rgba(160,120,50,.8)', dust: `rgba(230,220,200,${a})`, embers: `rgba(255,${140 + Math.floor(Math.sin(p.t) * 40)},60,${a})`, spores: `rgba(140,255,170,${0.4 + 0.4 * Math.sin(p.t)})` }[kind];
+          if (kind === 'fireflies') ctx.fillStyle = `rgba(220,255,140,${0.4 + 0.6 * Math.abs(Math.sin(p.t * 2))})`;
+          else if (kind === 'spores') ctx.fillStyle = `rgba(140,255,170,${0.4 + 0.4 * Math.sin(p.t)})`;
+          else if (!FLAT) ctx.fillStyle = `rgba(255,${140 + Math.floor(Math.sin(p.t) * 40)},60,0.8)`;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
         }
       }
-      raf = requestAnimationFrame(tick);
+      if (kind === 'rain') ctx.stroke();
     };
     const onResize = () => resize();
     window.addEventListener('resize', onResize);
-    canvas._stop = () => { cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); ctx.clearRect(0, 0, canvas.width, canvas.height); };
+    // con el lienzo fuera de la vista (otra pestaña del móvil, o desplazado) no se pinta nada
+    const io = window.IntersectionObserver ? new IntersectionObserver((es) => { visible = es[es.length - 1].isIntersecting; }) : null;
+    if (io) io.observe(canvas);
+    canvas._stop = () => { cancelAnimationFrame(raf); if (io) io.disconnect(); window.removeEventListener('resize', onResize); ctx.clearRect(0, 0, canvas.width, canvas.height); };
     if (!reduced()) tick();
   }
 
