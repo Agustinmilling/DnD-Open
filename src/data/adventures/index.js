@@ -3,4 +3,5 @@ module.exports = {
   robledal: require('./robledal'),
   gaviota: require('./gaviota'),
   sello: require('./sello'),
+  vendimia: require('./vendimia'),
 };
