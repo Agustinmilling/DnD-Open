@@ -4,10 +4,13 @@ Prototipo de plataforma web para jugar rol de mesa con las reglas de **5ª edici
 
 - **Salas multijugador** con código de invitación (1 a 4 jugadores; los demás pueden mirar).
 - **Creación de personaje** con asistente paso a paso y reglas de 2024: las 12 clases del SRD 5.2.1 con su subclase a nivel 3, 9 especies con sus linajes, 12 trasfondos con su dote de origen (+2/+1 o +1/+1/+1 a sus características), serie estándar o compra de 27 puntos, habilidades, pericia, maestrías de armas, trucos, conjuros preparados, equipo, retrato y color. Propone nombres al azar según la especie y el género (botón **🎲 Al azar** en el paso de detalles). También hay un botón **🎲 Al azar** y personajes pre-hechos.
-- **Tres aventuras originales** que elige el anfitrión en el lobby:
+- **Seis aventuras originales** que elige el anfitrión en el lobby:
   - *La Sombra bajo Robledal* (1-2 h): criptas enanas, goblins y un necrófago. Para empezar.
   - *Los Fuegos de Punta Gaviota* (2-3 h, 4 finales): un faro apagado, contrabandistas y un culto marino. Tres pistas en el orden que queráis (cada desvío cuesta tiempo), una capitana que puede ser aliada, presa o enemiga, y si os derrotan despertáis prisioneros en su barco.
   - *El Sello de Ámbar* (2-3 h, 4 finales): intriga en la ciudad de Velacruz entre una heredera, un canciller y un gremio de ladrones. Reunid pruebas, robad, pactad o traicionad, y decidid a quién entregar el sello… o romperlo.
+  - *La Última Vendimia* (2-3 h, 4 finales): terror gótico en un valle de viñedos donde los vendimiadores pierden la sombra. Tres pistas en cualquier orden (cada una gasta una noche), un pueblo que puede acabar quemándolo todo y tres formas de bajar a la bodega.
+  - *La Biblioteca bajo la Sal* (2-3 h, 4 finales): un colegio de magos enterrado bajo un salar y una expedición rival que cava a la vez. Cuanto más os entretengáis, más ventaja les dais; cuanto más forcéis el paso, más cerca está el derrumbe.
+  - *La Feria de Entreluces* (2-3 h, 4 finales): un cuento de hadas de tratos y astucia. Un niño ha cambiado su nombre por una cometa y hay que recuperarlo antes del primer gallo, sin endeudarse con la feria. Casi todo se puede resolver sin pelear.
 - **Decisiones con consecuencias**: contadores (tiempo, alerta, pruebas, sospecha), facciones, rutas que se abren o se cierran, derrotas que llevan a una escena de captura en vez de repetir, varios finales y un **📜 Diario** que apunta las pistas y decisiones del grupo.
 - **Dados**: bandeja de dados (d4 a d100, ventaja/desventaja), comando `/r 2d6+3` en el chat y tiradas desde la ficha (habilidades, salvaciones, características).
 - **Chat** de la mesa en tiempo real.
@@ -96,7 +99,7 @@ docs/formato-aventuras.md    Referencia del formato de aventuras
 .claude/agents/        Agentes de Claude Code para crear historias (ver abajo)
 test/monsters.js       Enfrenta cada criatura a grupos al azar y comprueba que el combate termina bien
 test/bot.js            Bot que juega turnos de combate (lo usan las pruebas)
-test/playthrough.js    Simula 120 partidas con bots (las 3 aventuras, 1-4 jugadores, personajes creados al azar) y comprueba que se llega a un final en nivel 3 (npm test; N=25 npm test para más)
+test/playthrough.js    Simula partidas con bots (todas las aventuras, 1-4 jugadores, personajes creados al azar) y comprueba que se llega a un final en nivel 3 (npm test; N=25 npm test para más)
 ```
 
 Para crear otra aventura, copia `src/data/adventures/gaviota.js` y regístrala en `index.js`. Cada escena tiene ilustración (`art`), textos que dependen de *flags*, pruebas (`checks`, con coste, objeto necesario, `dcMod` según contadores o resultado pacífico), tienda (`shop`), trampas, combate (`combat`, con `defeat.to` para una escena de captura) y salidas (`exits`, con `when`, `effects` y `hint`). Las consecuencias admiten `flags`, `unset`, `inc` (contadores), `set`, `goto` y más; `redirect` envía a un final según las decisiones y `milestoneLevel` sube al grupo de nivel por hito.
@@ -139,4 +142,4 @@ Código: MIT (ver `LICENSE`).
 
 Este proyecto incluye material del *System Reference Document 5.2.1* («SRD 5.2.1») de Wizards of the Coast LLC, disponible en <https://www.dndbeyond.com/srd>. El SRD 5.2.1 está bajo la licencia Creative Commons Attribution 4.0 International, disponible en <https://creativecommons.org/licenses/by/4.0/legalcode>. Los textos parten de la versión oficial en español del SRD 5.2.1 y se han resumido y adaptado.
 
-Las aventuras *La Sombra bajo Robledal*, *Los Fuegos de Punta Gaviota* y *El Sello de Ámbar*, sus personajes no jugadores, lugares y los personajes pre-hechos (nombres e historias) son originales de este proyecto. Los trasfondos distintos de Acólito, Criminal, Erudito y Soldado son genéricos de este proyecto. Proyecto no oficial, sin relación con Wizards of the Coast.
+Las aventuras *La Sombra bajo Robledal*, *Los Fuegos de Punta Gaviota*, *El Sello de Ámbar*, *La Última Vendimia*, *La Biblioteca bajo la Sal* y *La Feria de Entreluces*, sus personajes no jugadores, lugares y los personajes pre-hechos (nombres e historias) son originales de este proyecto. Los trasfondos distintos de Acólito, Criminal, Erudito y Soldado son genéricos de este proyecto. Proyecto no oficial, sin relación con Wizards of the Coast.

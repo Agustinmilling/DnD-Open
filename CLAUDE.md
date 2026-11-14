@@ -7,7 +7,7 @@ Juego web multijugador de rol con las reglas de 2024 de 5ª edición (solo SRD 5
 - Motor: `src/engine.js` (salas, escenas, pruebas, vistas) + `src/combat.js` (turnos, ataques, daño, condiciones, IA de monstruos) + `src/actions.js` (acciones de clase, conjuros, objetos). combat y actions son mixins de `Room`.
 - Creación de personaje: `public/choices.js` decide qué hay que elegir y lo usan a la vez el navegador y el servidor (`src/character.js` valida con él). Datos en `src/data/` (classes, species, backgrounds, features, spells, items, masteries, beasts, monsters).
 - Solo se usa contenido del SRD 5.2.1 (fuente en español: SP_SRD_CC_v5.2.1). Lo que no está en el SRD (otras subclases, especies, monstruos) no se añade.
-- Aventuras: `src/data/adventures/<id>.js`, registradas en `index.js`. Formato completo en `docs/formato-aventuras.md`.
+- Aventuras: `src/data/adventures/<id>.js`, registradas en `index.js`. Formato completo en `docs/formato-aventuras.md`. Hay seis: robledal, gaviota, sello, vendimia, salar y feria. Tras tocar una, `N=60 node test/playthrough.js <id>` enseña derrotas por escena y qué finales salen.
 - Agentes en `.claude/agents/`:
   - `analista-de-campanas`: analiza libros y campañas de `inspiracion/fuentes/` y propone esquemas originales.
   - `disenador-aventuras`: programa una aventura aprobada y la prueba hasta que pase.
