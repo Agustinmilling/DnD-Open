@@ -4,4 +4,5 @@ module.exports = {
   gaviota: require('./gaviota'),
   sello: require('./sello'),
   vendimia: require('./vendimia'),
+  salar: require('./salar'),
 };

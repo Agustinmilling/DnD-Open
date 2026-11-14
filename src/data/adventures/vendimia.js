@@ -124,7 +124,7 @@ module.exports = {
         'Entre las tumbas alguien ha estado cavando. No para enterrar. La tierra removida se mueve otra vez, desde dentro, y unos dedos sin carne se agarran al borde de la fosa.',
       ],
       combat: {
-        enemies: (n) => scale(n, [['skeleton'], ['skeleton', 'zombie'], ['skeleton', 'skeleton', 'zombie'], ['skeleton', 'skeleton', 'zombie', 'zombie']]),
+        enemies: (n) => scale(n, [['zombie'], ['skeleton', 'zombie'], ['skeleton', 'skeleton', 'zombie'], ['skeleton', 'skeleton', 'zombie', 'zombie']]),
         auto: () => true,
         surprise: () => null,
         victory: { text: 'Los huesos vuelven a ser solo huesos. Los colocáis en su fosa lo mejor que sabéis. En ninguna de estas lápidas hay fecha de muerte: solo un nombre, un racimo tallado y la palabra «PAGADO».', milestoneXp: 200, flags: ['knowsPact'], gold: 5 },
