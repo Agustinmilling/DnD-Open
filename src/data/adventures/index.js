@@ -5,4 +5,5 @@ module.exports = {
   sello: require('./sello'),
   vendimia: require('./vendimia'),
   salar: require('./salar'),
+  feria: require('./feria'),
 };
